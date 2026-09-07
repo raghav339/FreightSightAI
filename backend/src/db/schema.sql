@@ -116,7 +116,11 @@ CREATE TABLE IF NOT EXISTS alerts (
   id INT AUTO_INCREMENT PRIMARY KEY,
   route VARCHAR(255) NOT NULL,
   alert_type ENUM('high_risk', 'price_spike', 'volatility') NOT NULL,
-  message VARCHAR(500) NOT NULL,
+  -- Was VARCHAR(500): the high_risk alert embeds the full forecast
+  -- summary (which itself can embed the vessel-substitution explanation),
+  -- easily exceeding 500 chars. Widened to TEXT — see the matching
+  -- migration in db/index.js for already-deployed databases.
+  message TEXT NOT NULL,
   forecast_result_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (forecast_result_id) REFERENCES forecast_results(id) ON DELETE SET NULL

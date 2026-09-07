@@ -80,6 +80,14 @@ if (CLIENT === "mysql") {
     } catch (err) {
       console.error("MySQL migration failed (widen vessel_constraint_note):", err.message);
     }
+    // alerts.message was VARCHAR(500) — the high_risk alert embeds the
+    // full forecast summary (which can itself embed the vessel
+    // explanation), which was overflowing it the same way.
+    try {
+      await pool.query("ALTER TABLE alerts MODIFY COLUMN message TEXT NOT NULL");
+    } catch (err) {
+      console.error("MySQL migration failed (widen alerts.message):", err.message);
+    }
   })();
 } else {
   const Database = require("better-sqlite3");
