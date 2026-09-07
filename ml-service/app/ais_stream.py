@@ -141,6 +141,10 @@ class AISStreamCollector:
         self.last_connect_at: str | None = None
         self.last_message_at: str | None = None
         self.last_error: str | None = None
+        # The currently-live websocket, tracked so stop() can force-close
+        # it immediately instead of waiting on the in-flight recv() timeout
+        # (see stop() for why this matters).
+        self._ws: Any = None
         self.messages = 0
         self.positions = 0
         self.static_messages = 0
@@ -442,6 +446,8 @@ class AISStreamCollector:
                 )
                 ws.settimeout(60)
                 ws.send(json.dumps(self._subscription()))
+                with self.lock:
+                    self._ws = ws
                 backoff = 2
                 while not self.stop_event.is_set():
                     raw = ws.recv()
@@ -478,6 +484,9 @@ class AISStreamCollector:
                 # clean shutdown, or an uncaught error mid-stream — so a
                 # crash never leaks a connection that counts against
                 # AISStream's per-key concurrent connection limit.
+                with self.lock:
+                    if self._ws is ws:
+                        self._ws = None
                 if ws is not None:
                     try:
                         ws.close()
@@ -496,6 +505,23 @@ class AISStreamCollector:
 
     def stop(self):
         self.stop_event.set()
+        # Force-close the live socket instead of just flagging stop_event.
+        # The collector thread blocks in ws.recv() for up to 60s at a time,
+        # so stop_event alone can leave the process waiting on that recv()
+        # while the platform's SIGTERM->SIGKILL grace period runs out —
+        # killing the process with the socket still open. AISStream then
+        # keeps counting that connection as live under our API key until
+        # it times out on their end, so every restart/redeploy can leak
+        # one more connection and eventually trip the concurrent-connection
+        # 429. Closing here makes the pending recv() raise immediately, so
+        # the loop's `finally` block (see _loop) always runs before exit.
+        with self.lock:
+            ws = self._ws
+        if ws is not None:
+            try:
+                ws.close()
+            except Exception:
+                pass
 
     def status(self):
         return {
