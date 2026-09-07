@@ -330,6 +330,22 @@ class AISStreamCollector:
             "ON ais_positions(port_near, port_distance_nm, received_at)"
         )
 
+    def _nearest_port(self, lat: float, lon: float) -> tuple[str | None, float | None]:
+        """Return (port_name, distance_nm) for the closest PORT_COORDS entry.
+
+        Distances are only meaningful near the tracked ports (we only
+        subscribe to bounding boxes around them), but this is safe to call
+        for any position: it just returns whichever port is closest.
+        """
+        nearest_name = None
+        nearest_nm = None
+        for name, (port_lat, port_lon) in PORT_COORDS.items():
+            distance_nm = _haversine_nm(lat, lon, port_lat, port_lon)
+            if nearest_nm is None or distance_nm < nearest_nm:
+                nearest_name = name
+                nearest_nm = distance_nm
+        return nearest_name, nearest_nm
+
     def _save_position(self, event: dict[str, Any]):
         md = event.get("MetaData") or {}
         msg = ((event.get("Message") or {}).get("PositionReport") or {})

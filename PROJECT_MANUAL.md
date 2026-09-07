@@ -410,6 +410,20 @@ is configured on the ML service.
 
 The application should continue using its non-live AIS fallback.
 
+### "Forecast was generated but could not be saved"
+
+The forecast itself succeeded (the ML service returned a valid result), but the backend failed to write the result to `forecast_results` — check the backend logs (Render → `freightsightai-backend` → Logs) for the exact SQL error.
+
+The most common cause historically: on MySQL, a generated text field (`vessel_constraint_note`, or an `alerts.message` built from the forecast summary) exceeded its column's `VARCHAR` limit, and MySQL's default strict mode rejects the whole `INSERT` instead of truncating. Look for `Data too long for column '<name>'` in the log line. Both known offenders (`forecast_results.vessel_constraint_note` and `alerts.message`) were widened to `TEXT` in `schema.sql`, with a matching `ALTER TABLE ... MODIFY COLUMN` migration in `backend/src/db/index.js` that runs automatically on every backend boot — so an already-deployed database self-heals on redeploy, no manual SQL needed. If a *different* column name shows up in a fresh `Data too long` error, the same fix pattern applies: widen that column to `TEXT` in `schema.sql` and add the matching `MODIFY COLUMN` migration.
+
+### `/ais/status` shows `position_messages: 0` while `messages`/`static_messages` climb
+
+This means every `PositionReport` AIS message is failing to insert into `ais_positions`, while `ShipStaticData`/`StaticDataReport` messages save fine. Root cause: AISStream returns `NavigationalStatus` as a string enum (`"UnderWayUsingEngine"`, `"AtAnchor"`, etc.), not the raw 0–15 ITU-R numeric code the `ais_positions.nav_status INT` column (and `idle_detector.py`'s `NAV_STATUS_LABELS`) expect. `ml-service/app/ais_stream.py` now normalizes this via `_normalize_nav_status()` before every insert — a string→int lookup table that also passes numeric values through unchanged and falls back to `None` (instead of raising) for anything unrecognized.
+
+### `/ais/status` shows a `last_error` like `"...429 Too Many Requests...concurrent connections per user exceeded"`
+
+This is a self-inflicted connection leak, usually triggered by the bug above (or any other per-message error): the collector's reconnect loop only called `ws.close()` on a clean exit, so any exception while handling a message abandoned the websocket without closing it, then immediately reconnected — repeat that enough times and AISStream's per-API-key concurrent-connection cap gets exhausted. `_loop()` in `ais_stream.py` now guarantees `ws.close()` in a `finally` block on every exit path, and wraps per-message handling in its own try/except so one bad message logs to `last_error` instead of tearing down the whole connection. If you hit this, redeploy so the fix is live, then wait — clearing the leaked connections on AISStream's side is out of this app's control, so `last_error` may not clear immediately even after redeploying.
+
 ### History is empty
 
 History requires an authenticated user. Register/login first.
@@ -507,3 +521,13 @@ Also disclose:
 - port constraints are reference values requiring operational verification;
 - route model guardrails can fall back to the global market proxy;
 - this is a decision-support MVP, not an automated charter execution system.
+
+---
+
+## 13. Changelog
+
+### 2026-09-08
+
+- **Fixed:** `/predict` intermittently returning "Forecast was generated but could not be saved" on MySQL. Cause: `forecast_results.vessel_constraint_note` and `alerts.message` were `VARCHAR(500)`, but the generated vessel-substitution explanation (and the summary text embedded in high-risk alert messages) can exceed 500 characters, and MySQL strict mode rejects an oversized `INSERT` outright rather than truncating it. Both columns widened to `TEXT` in `backend/src/db/schema.sql`, with matching `ALTER TABLE ... MODIFY COLUMN` migrations added to the startup migration block in `backend/src/db/index.js` so already-deployed databases self-heal on next boot.
+- **Fixed:** AIS `PositionReport` messages never persisting (`/ais/status` showing `position_messages: 0` indefinitely). Cause: AISStream returns `NavigationalStatus` as a string enum, not the raw ITU-R numeric code the `ais_positions.nav_status INT` column expects, so every insert failed. Added `_normalize_nav_status()` in `ml-service/app/ais_stream.py` to map known string values to their numeric code (and safely fall back to `None` for anything unrecognized).
+- **Fixed:** AIS collector connection leak causing `last_error: "...429 Too Many Requests...concurrent connections per user exceeded"`. Cause: the reconnect loop only closed the websocket on a clean exit; any exception while handling a message (including the `nav_status` bug above) abandoned the socket without closing it, then reconnected immediately, eventually exhausting AISStream's per-key concurrent-connection limit. `_loop()` in `ais_stream.py` now guarantees `ws.close()` via a `finally` block on every exit path, and isolates per-message handling errors so one bad message no longer kills the connection.

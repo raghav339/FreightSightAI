@@ -6,6 +6,14 @@ Its main workflow is:
 
 **forecast freight → assess risk → validate vessel/port feasibility → compare origins → choose charter timing/strategy → optimize multi-voyage/COA plans.**
 
+## Recent fixes
+
+See `PROJECT_MANUAL.md` §13 (Changelog) for full detail. Latest:
+
+- Widened `forecast_results.vessel_constraint_note` and `alerts.message` from `VARCHAR(500)` to `TEXT` — fixes intermittent "Forecast was generated but could not be saved" errors on MySQL caused by generated explanation text exceeding the old column limits.
+- Fixed AIS `PositionReport` ingestion: AISStream's `NavigationalStatus` string enum is now normalized to the numeric ITU-R code the `ais_positions` schema expects, instead of failing every insert.
+- Fixed an AIS collector connection leak that could exhaust AISStream's per-key concurrent-connection limit (surfaced as a `429` in `/ais/status`'s `last_error`).
+
 ## Project architecture
 
 ```text
@@ -191,9 +199,9 @@ The backend exposes the main browser API under `/api`:
 | `GET /api/routes` | Route/commodity metadata |
 | `GET /api/vessels` | Vessel master data |
 | `GET /api/ports` | Port constraint data |
-| `GET /api/ais/status` | AIS collector status |
-| `GET /api/ais/route-features` | AIS route features |
-| `GET /api/ais/idle-vessels` | AIS idle-vessel candidates |
+| `GET /api/ais/status` | AIS collector status (connection health, message counts, last error) |
+| `GET /api/ais/route-features` | AIS route features for an origin/destination pair |
+| `GET /api/ais/idle-vessels` | AIS idle-vessel candidates; response includes a `count` of matching vessels for the given query params (not a running total — recomputed live per request) |
 | `GET /api/forecast/:id/pdf` | PDF forecast report |
 | `POST /api/auth/register` | Local account registration |
 | `POST /api/auth/login` | Local login |
@@ -286,4 +294,3 @@ The FastAPI app was also exercised directly with its test client. The following 
 
 Live AIS `PositionReport` and `ShipStaticData` records are persisted in the same MySQL database used by the backend. This means AIS history survives ML-service/Render restarts and redeploys. The collector keeps the latest 30 days by default (`AIS_RETENTION_DAYS=30`).
 
-For production/Render, set these environment variables on **both** the backend and ML service: `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_SSL`, and `MYSQL_SSL_CA` (when required). On the ML service also set `AIS_DB_CLIENT=mysql` and `AISSTREAM_API_KEY`. The ML service writes to the `ais_positions` and `ais_static` MySQL tables; `npm run init-mysql-db` also creates those tables.\n\nSQLite remains available for local development when `AIS_DB_CLIENT=sqlite` (or when no `MYSQL_HOST` is configured).
