@@ -28,6 +28,54 @@ try:
 except Exception:  # pragma: no cover
     websocket = None
 
+# AISStream's PositionReport.NavigationalStatus is a human-readable string
+# enum (e.g. "UnderWayUsingEngine", "AtAnchor") — NOT the raw 0-15 ITU-R
+# M.1371 integer code that ais_positions.nav_status stores and that
+# idle_detector.py's NAV_STATUS_LABELS/STATIONARY_NAV_STATUSES expect.
+# Writing the string straight into an INT column made every single
+# PositionReport insert fail (see _save_position). Normalize defensively:
+# accept an already-numeric value unchanged, map known string variants,
+# and fall back to None (rather than raising) for anything unrecognized so
+# one unexpected field never crashes the collector loop.
+_NAV_STATUS_STRING_TO_INT = {
+    "underwayusingengine": 0,
+    "atanchor": 1,
+    "notundercommand": 2,
+    "restrictedmanoeuvrability": 3,
+    "restrictedmaneuverability": 3,
+    "constrainedbyherdraught": 4,
+    "constrainedbydraught": 4,
+    "moored": 5,
+    "aground": 6,
+    "engagedinfishing": 7,
+    "underwaysailing": 8,
+    "reservedforfutureamendmentofnavigationalstatusforhscwig": 9,
+    "reservedforfutureuse": 9,
+    "reserved": 9,
+    "powerdrivenvesseltowingastern": 11,
+    "powerdrivenvesselpushingaheadortowingalongside": 12,
+    "reservedforfutureuse13": 13,
+    "aissart": 14,
+    "aissartmobsartorepirb": 14,
+    "notdefined": 15,
+    "undefined": 15,
+    "default": 15,
+}
+
+
+def _normalize_nav_status(value):
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+        key = stripped.lower().replace("_", "").replace(" ", "").replace("-", "")
+        return _NAV_STATUS_STRING_TO_INT.get(key)
+    return None
+
 AIS_URL = "wss://stream.aisstream.io/v0/stream"
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("AISSTREAM_DB", str(ROOT / "data" / "production" / "aisstream_live.sqlite3")))
@@ -292,11 +340,12 @@ class AISStreamCollector:
             return
         nearest_port, port_distance_nm = self._nearest_port(float(lat), float(lon))
         received_at = _utcnow()
+        nav_status = _normalize_nav_status(msg.get("NavigationalStatus"))
         row = (
             received_at.replace(tzinfo=None) if self.db_client == "mysql" else received_at.isoformat(),
             msg.get("Timestamp"), str(mmsi), md.get("ShipName"),
             float(lat), float(lon), msg.get("Sog"), msg.get("Cog"), msg.get("TrueHeading"),
-            msg.get("NavigationalStatus"), nearest_port, port_distance_nm, None
+            nav_status, nearest_port, port_distance_nm, None
         )
         self._execute("""INSERT INTO ais_positions
           (received_at,ais_timestamp,mmsi,ship_name,lat,lon,sog,cog,heading,nav_status,port_near,port_distance_nm,ship_type)
@@ -365,6 +414,7 @@ class AISStreamCollector:
     def _loop(self):
         backoff = 2
         while not self.stop_event.is_set():
+            ws = None
             try:
                 self.last_connect_at = _utcnow().isoformat()
                 ws = websocket.create_connection(
@@ -386,19 +436,37 @@ class AISStreamCollector:
                     event = json.loads(raw)
                     self.messages += 1
                     typ = event.get("MessageType")
-                    if typ == "PositionReport":
-                        self._save_position(event)
-                    elif typ in ("ShipStaticData", "StaticDataReport"):
-                        self._save_static(event)
-                try:
-                    ws.close()
-                except Exception:
-                    pass
+                    try:
+                        if typ == "PositionReport":
+                            self._save_position(event)
+                        elif typ in ("ShipStaticData", "StaticDataReport"):
+                            self._save_static(event)
+                    except Exception as exc:
+                        # A single malformed/unexpected message must never
+                        # take down the whole connection. Previously any
+                        # error here (e.g. an unmapped field) propagated to
+                        # the outer handler below, which abandoned the
+                        # websocket without closing it — see the `finally`
+                        # block — and reconnected immediately, eventually
+                        # exhausting AISStream's per-key concurrent
+                        # connection limit (HTTP 429 "concurrent
+                        # connections per user exceeded").
+                        self.last_error = f"Message handling error ({typ}): {exc}"
             except Exception as exc:
                 self.last_error = str(exc)
                 # Exponential reconnect with jitter.
                 self.stop_event.wait(min(backoff, 60))
                 backoff = min(backoff * 2, 60)
+            finally:
+                # Always close the socket on the way out — connect failure,
+                # clean shutdown, or an uncaught error mid-stream — so a
+                # crash never leaks a connection that counts against
+                # AISStream's per-key concurrent connection limit.
+                if ws is not None:
+                    try:
+                        ws.close()
+                    except Exception:
+                        pass
 
     def start(self):
         if not self.enabled:
