@@ -1,0 +1,5 @@
+vessel_class,dwt,draft,length,beam,source
+Capesize,181360.0,18.0,292.0,45.0,port_vessel_compatibility_(cargo_ships)_clean.csv
+Handysize,35000.0,10.0,180.0,30.0,port_vessel_compatibility_(cargo_ships)_clean.csv
+Panamax,82000.0,13.5,225.0,32.0,port_vessel_compatibility_(cargo_ships)_clean.csv
+Supramax,58000.0,12.5,190.0,32.0,port_vessel_compatibility_(cargo_ships)_clean.csv

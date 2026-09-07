@@ -1,0 +1,472 @@
+{
+  "status": "active",
+  "schema_version": "1.0",
+  "target": "synthetic_route_freight_usd_per_t",
+  "data_mode": "synthetic_mvp",
+  "source_file": "data/synthetic/route_freight_observations.csv",
+  "dataset_sha256": "f5c55b0c149cd5aa6412a8b1d01601333141902b09c20715a45f936dd4b07ec1",
+  "eligible_rows": 1120,
+  "verified_rows": 0,
+  "synthetic_rows": 1120,
+  "routes_with_models": [
+    "Kalimantan|Kamarajar|R4",
+    "Newcastle|Chennai|R8",
+    "Newcastle|Visakhapatnam|R1",
+    "Norfolk|Haldia|R6",
+    "Port Hedland|Chennai|R5",
+    "Richards Bay|Krishnapatnam|R3",
+    "Saldanha Bay|Visakhapatnam|R7",
+    "Tubarao|Paradip|R2"
+  ],
+  "metrics": {
+    "Kalimantan|Kamarajar|R4": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 0.3679,
+        "naive_mae_usd_per_t": 0.4185,
+        "moving_average_mae_usd_per_t": 0.3585,
+        "improvement_pct": 12.1,
+        "improvement_pct_vs_moving_average": -2.62,
+        "rmse_usd_per_t": 0.4428,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 0.346,
+        "naive_mae_usd_per_t": 0.4115,
+        "moving_average_mae_usd_per_t": 0.3521,
+        "improvement_pct": 15.92,
+        "improvement_pct_vs_moving_average": 1.71,
+        "rmse_usd_per_t": 0.4657,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 0.403,
+        "naive_mae_usd_per_t": 0.5076,
+        "moving_average_mae_usd_per_t": 0.3839,
+        "improvement_pct": 20.61,
+        "improvement_pct_vs_moving_average": -4.98,
+        "rmse_usd_per_t": 0.5045,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      }
+    },
+    "Newcastle|Chennai|R8": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 0.6256,
+        "naive_mae_usd_per_t": 0.7385,
+        "moving_average_mae_usd_per_t": 0.9719,
+        "improvement_pct": 15.29,
+        "improvement_pct_vs_moving_average": 35.63,
+        "rmse_usd_per_t": 0.8652,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 0.7292,
+        "naive_mae_usd_per_t": 1.0481,
+        "moving_average_mae_usd_per_t": 1.2513,
+        "improvement_pct": 30.43,
+        "improvement_pct_vs_moving_average": 41.72,
+        "rmse_usd_per_t": 0.9707,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 0.7969,
+        "naive_mae_usd_per_t": 1.2916,
+        "moving_average_mae_usd_per_t": 1.4876,
+        "improvement_pct": 38.3,
+        "improvement_pct_vs_moving_average": 46.43,
+        "rmse_usd_per_t": 1.0117,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      }
+    },
+    "Newcastle|Visakhapatnam|R1": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 0.6542,
+        "naive_mae_usd_per_t": 0.8322,
+        "moving_average_mae_usd_per_t": 0.6953,
+        "improvement_pct": 21.4,
+        "improvement_pct_vs_moving_average": 5.92,
+        "rmse_usd_per_t": 0.7678,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 0.6589,
+        "naive_mae_usd_per_t": 0.6896,
+        "moving_average_mae_usd_per_t": 0.6423,
+        "improvement_pct": 4.45,
+        "improvement_pct_vs_moving_average": -2.59,
+        "rmse_usd_per_t": 0.8461,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 0.83,
+        "naive_mae_usd_per_t": 0.8764,
+        "moving_average_mae_usd_per_t": 0.6932,
+        "improvement_pct": 5.3,
+        "improvement_pct_vs_moving_average": -19.73,
+        "rmse_usd_per_t": 1.0094,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      }
+    },
+    "Norfolk|Haldia|R6": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 1.4453,
+        "naive_mae_usd_per_t": 1.4426,
+        "moving_average_mae_usd_per_t": 1.4243,
+        "improvement_pct": -0.19,
+        "improvement_pct_vs_moving_average": -1.48,
+        "rmse_usd_per_t": 1.9268,
+        "beats_naive_persistence": false,
+        "beats_moving_average": false,
+        "model_beats_baseline": false
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 1.2951,
+        "naive_mae_usd_per_t": 1.6396,
+        "moving_average_mae_usd_per_t": 1.4826,
+        "improvement_pct": 21.01,
+        "improvement_pct_vs_moving_average": 12.65,
+        "rmse_usd_per_t": 1.6634,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 1.4169,
+        "naive_mae_usd_per_t": 1.7584,
+        "moving_average_mae_usd_per_t": 1.6353,
+        "improvement_pct": 19.42,
+        "improvement_pct_vs_moving_average": 13.35,
+        "rmse_usd_per_t": 1.7827,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      }
+    },
+    "Port Hedland|Chennai|R5": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 1.147,
+        "naive_mae_usd_per_t": 1.2667,
+        "moving_average_mae_usd_per_t": 1.2401,
+        "improvement_pct": 9.45,
+        "improvement_pct_vs_moving_average": 7.51,
+        "rmse_usd_per_t": 1.3519,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 1.3486,
+        "naive_mae_usd_per_t": 1.215,
+        "moving_average_mae_usd_per_t": 1.2396,
+        "improvement_pct": -11.0,
+        "improvement_pct_vs_moving_average": -8.79,
+        "rmse_usd_per_t": 1.5742,
+        "beats_naive_persistence": false,
+        "beats_moving_average": false,
+        "model_beats_baseline": false
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 1.2787,
+        "naive_mae_usd_per_t": 1.4152,
+        "moving_average_mae_usd_per_t": 1.3333,
+        "improvement_pct": 9.64,
+        "improvement_pct_vs_moving_average": 4.09,
+        "rmse_usd_per_t": 1.6125,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      }
+    },
+    "Richards Bay|Krishnapatnam|R3": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 0.6312,
+        "naive_mae_usd_per_t": 0.6715,
+        "moving_average_mae_usd_per_t": 0.5607,
+        "improvement_pct": 5.99,
+        "improvement_pct_vs_moving_average": -12.57,
+        "rmse_usd_per_t": 0.7024,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 0.5845,
+        "naive_mae_usd_per_t": 0.6308,
+        "moving_average_mae_usd_per_t": 0.549,
+        "improvement_pct": 7.34,
+        "improvement_pct_vs_moving_average": -6.47,
+        "rmse_usd_per_t": 0.6915,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 0.6479,
+        "naive_mae_usd_per_t": 0.7844,
+        "moving_average_mae_usd_per_t": 0.6308,
+        "improvement_pct": 17.41,
+        "improvement_pct_vs_moving_average": -2.71,
+        "rmse_usd_per_t": 0.7761,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      }
+    },
+    "Saldanha Bay|Visakhapatnam|R7": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 1.0447,
+        "naive_mae_usd_per_t": 1.2593,
+        "moving_average_mae_usd_per_t": 1.0446,
+        "improvement_pct": 17.04,
+        "improvement_pct_vs_moving_average": -0.01,
+        "rmse_usd_per_t": 1.2748,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 1.0486,
+        "naive_mae_usd_per_t": 1.4123,
+        "moving_average_mae_usd_per_t": 1.1386,
+        "improvement_pct": 25.75,
+        "improvement_pct_vs_moving_average": 7.91,
+        "rmse_usd_per_t": 1.3396,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 1.0181,
+        "naive_mae_usd_per_t": 1.2732,
+        "moving_average_mae_usd_per_t": 1.0907,
+        "improvement_pct": 20.04,
+        "improvement_pct_vs_moving_average": 6.65,
+        "rmse_usd_per_t": 1.4162,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      }
+    },
+    "Tubarao|Paradip|R2": {
+      "1": {
+        "train_rows": 109,
+        "test_rows": 27,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-07-01"
+        },
+        "mae_usd_per_t": 1.448,
+        "naive_mae_usd_per_t": 1.553,
+        "moving_average_mae_usd_per_t": 1.3904,
+        "improvement_pct": 6.76,
+        "improvement_pct_vs_moving_average": -4.15,
+        "rmse_usd_per_t": 1.841,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      },
+      "2": {
+        "train_rows": 109,
+        "test_rows": 26,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-06-01"
+        },
+        "mae_usd_per_t": 1.2147,
+        "naive_mae_usd_per_t": 1.3819,
+        "moving_average_mae_usd_per_t": 1.3505,
+        "improvement_pct": 12.1,
+        "improvement_pct_vs_moving_average": 10.05,
+        "rmse_usd_per_t": 1.6782,
+        "beats_naive_persistence": true,
+        "beats_moving_average": true,
+        "model_beats_baseline": true
+      },
+      "3": {
+        "train_rows": 109,
+        "test_rows": 25,
+        "test_period": {
+          "start": "2024-05-01",
+          "end": "2026-05-01"
+        },
+        "mae_usd_per_t": 1.3489,
+        "naive_mae_usd_per_t": 1.5396,
+        "moving_average_mae_usd_per_t": 1.2667,
+        "improvement_pct": 12.38,
+        "improvement_pct_vs_moving_average": -6.49,
+        "rmse_usd_per_t": 1.7833,
+        "beats_naive_persistence": true,
+        "beats_moving_average": false,
+        "model_beats_baseline": true
+      }
+    }
+  },
+  "skipped_routes": {},
+  "minimum_observations_per_route": 24,
+  "features": [
+    "cargo_size_t",
+    "lag1",
+    "lag2",
+    "lag3",
+    "rolling_mean_3",
+    "rolling_std_3",
+    "month_sin",
+    "month_cos",
+    "commodity",
+    "vessel_class",
+    "observation_type"
+  ],
+  "interval_note": "Prediction bounds, when exposed, are ensemble-tree percentiles and are not statistical confidence intervals.",
+  "baseline_summary": {
+    "total_route_horizon_models": 24,
+    "passed": 22,
+    "failed": 2,
+    "failed_route_horizons": [
+      "Norfolk|Haldia|R6 H+1",
+      "Port Hedland|Chennai|R5 H+2"
+    ]
+  }
+}

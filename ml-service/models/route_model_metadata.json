@@ -1,0 +1,92 @@
+{
+  "model_type": "AIS-enhanced route-level dry-bulk market proxy",
+  "target_definition": "future BDRY ETF price proxy, NOT USD/ton freight rate",
+  "route_features_source": "IMF PortWatch AIS-derived daily port activity, aggregated monthly",
+  "feature_file": "data/production/route_monthly_features.csv",
+  "training_period": {
+    "start": "2019-01-01",
+    "end": "2024-10-01"
+  },
+  "latest_route_feature_month": "2024-10-01",
+  "origins": [
+    "Newcastle",
+    "Hay Point",
+    "Gladstone",
+    "Norfolk",
+    "Baltimore",
+    "Nacala",
+    "Beira",
+    "Vostochny",
+    "Murmansk",
+    "Samarinda",
+    "Taboneo"
+  ],
+  "destinations": [
+    "Paradip",
+    "Visakhapatnam",
+    "Gangavaram",
+    "Gopalpur",
+    "Dhamra",
+    "Sagar Sandheads",
+    "Haldia",
+    "Chennai",
+    "Kamarajar",
+    "Tuticorin"
+  ],
+  "numeric_features": [
+    "bdry_proxy",
+    "distance_nm",
+    "origin_portcalls_dry_bulk",
+    "origin_portcalls_cargo",
+    "origin_portcalls",
+    "origin_import_dry_bulk",
+    "origin_export_dry_bulk",
+    "destination_portcalls_dry_bulk",
+    "destination_portcalls_cargo",
+    "destination_portcalls",
+    "destination_import_dry_bulk",
+    "destination_export_dry_bulk",
+    "origin_ais_coverage",
+    "destination_ais_coverage",
+    "month_sin",
+    "month_cos"
+  ],
+  "categorical_features": [
+    "origin",
+    "destination"
+  ],
+  "metrics": {
+    "1": {
+      "test_rows": 1391,
+      "test_period": {
+        "start": "2023-09-01",
+        "end": "2024-09-01"
+      },
+      "mae_proxy_points": 2.0497,
+      "rmse_proxy_points": 2.3959,
+      "target": "next_h_month_bdry_market_proxy"
+    },
+    "2": {
+      "test_rows": 1284,
+      "test_period": {
+        "start": "2023-09-01",
+        "end": "2024-08-01"
+      },
+      "mae_proxy_points": 3.3572,
+      "rmse_proxy_points": 4.1562,
+      "target": "next_h_month_bdry_market_proxy"
+    },
+    "3": {
+      "test_rows": 1177,
+      "test_period": {
+        "start": "2023-09-01",
+        "end": "2024-07-01"
+      },
+      "mae_proxy_points": 6.8663,
+      "rmse_proxy_points": 7.9877,
+      "target": "next_h_month_bdry_market_proxy"
+    }
+  },
+  "calibration": "If current_spot_rate_usd_per_ton is provided, projected_rate = spot_rate * predicted_proxy/current_proxy.",
+  "direct_ais_status": "AISStream live integration is implemented for inference-time route features; PortWatch is the historical AIS-derived training fallback when live AIS is unavailable."
+}

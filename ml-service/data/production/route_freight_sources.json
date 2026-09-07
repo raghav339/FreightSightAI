@@ -1,0 +1,202 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Public-source route freight observation collection for FreightSight SIH26006. Only verified route-level freight observations belong in the target CSV.",
+  "routes": [
+    {
+      "route_id": "ID_SK_PARADIP_PMAX_75",
+      "origin": "South Kalimantan",
+      "destination": "Paradip",
+      "commodity": "thermal_coal",
+      "vessel_class": "Panamax",
+      "cargo_size_t": 75000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "S&P Global Platts",
+      "source_url": "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/010317-platts-launches-dry-bulk-tce-assessments"
+    },
+    {
+      "route_id": "ID_SK_PARADIP_SUPRA_55",
+      "origin": "South Kalimantan",
+      "destination": "Paradip",
+      "commodity": "thermal_coal",
+      "vessel_class": "Ultramax",
+      "cargo_size_t": 55000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "S&P Global Platts",
+      "source_url": "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/113017-platts-to-launch-ultramax-dry-bulk-tce-assessments-jan-2-2018"
+    },
+    {
+      "route_id": "ID_SK_KRISHNA_PMAX_75",
+      "origin": "South Kalimantan",
+      "destination": "Krishnapatnam",
+      "commodity": "thermal_coal",
+      "vessel_class": "Panamax",
+      "cargo_size_t": 75000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "Public market reports / route evidence",
+      "source_url": "https://www.scribd.com/document/1009938919/Dry-Freight-Wire-06-Mar-2026"
+    },
+    {
+      "route_id": "ZA_RB_PARADIP_PMAX_75",
+      "origin": "Richards Bay",
+      "destination": "Paradip",
+      "commodity": "thermal_coal",
+      "vessel_class": "Panamax",
+      "cargo_size_t": 75000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "S&P Global Platts",
+      "source_url": "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/010317-platts-launches-dry-bulk-tce-assessments"
+    },
+    {
+      "route_id": "ZA_RB_PARADIP_SUPRA_55",
+      "origin": "Richards Bay",
+      "destination": "Paradip",
+      "commodity": "thermal_coal",
+      "vessel_class": "Ultramax",
+      "cargo_size_t": 55000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "S&P Global Platts",
+      "source_url": "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/113017-platts-to-launch-ultramax-dry-bulk-tce-assessments-jan-2-2018"
+    },
+    {
+      "route_id": "ZA_RB_KRISHNA_PMAX_75",
+      "origin": "Richards Bay",
+      "destination": "Krishnapatnam",
+      "commodity": "thermal_coal",
+      "vessel_class": "Panamax",
+      "cargo_size_t": 75000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "Public market reports / route evidence",
+      "source_url": "https://www.scribd.com/document/1009938919/Dry-Freight-Wire-06-Mar-2026"
+    },
+    {
+      "route_id": "AU_GLADSTONE_DHAMRA_CAPE_150",
+      "origin": "Gladstone",
+      "destination": "Dhamra",
+      "commodity": "thermal_coal",
+      "vessel_class": "Capesize",
+      "cargo_size_t": 150000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "Baltic Exchange BIOI",
+      "source_url": "https://www.balticexchange.com/en/data-services/Circulars/market-announcements-/category-a/2026/circular-07-26--new-index---baltic-indian-ocean-indices.html"
+    },
+    {
+      "route_id": "AU_GLADSTONE_DHAMRA_PMAX_80",
+      "origin": "Gladstone",
+      "destination": "Dhamra",
+      "commodity": "thermal_coal",
+      "vessel_class": "Panamax",
+      "cargo_size_t": 80000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "Baltic Exchange BIOI",
+      "source_url": "https://www.balticexchange.com/en/data-services/Circulars/market-announcements-/category-a/2026/circular-07-26--new-index---baltic-indian-ocean-indices.html"
+    },
+    {
+      "route_id": "US_HR_PARADIP_PMAX_70",
+      "origin": "Hampton Roads",
+      "destination": "Paradip",
+      "commodity": "coal",
+      "vessel_class": "Panamax",
+      "cargo_size_t": 70000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "S&P Global Platts",
+      "source_url": "https://www.spglobal.com/commodity-insights/en/pricing-benchmarks/our-methodology/subscriber-notes/040224-platts-revises-routing-for-usec-india-dry-bulk-freight-assessment"
+    },
+    {
+      "route_id": "RU_TAMAN_PARADIP_SUPRA_50",
+      "origin": "Taman",
+      "destination": "Paradip",
+      "commodity": "coal",
+      "vessel_class": "Supramax",
+      "cargo_size_t": 50000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "S&P Global methodology",
+      "source_url": "https://www.spglobal.com/commodityinsights/PlattsContent/_assets/_files/en/our-methodology/methodology-specifications/global_freight.pdf"
+    },
+    {
+      "route_id": "RU_VOSTOCHNY_PARADIP_PMAX_75",
+      "origin": "Vostochny",
+      "destination": "Paradip",
+      "commodity": "coal",
+      "vessel_class": "Panamax",
+      "cargo_size_t": 75000,
+      "target_unit": "usd_per_t",
+      "route_definition_source": "S&P Global methodology / route reference",
+      "source_url": "https://www.spglobal.com/commodityinsights/PlattsContent/_assets/_files/en/our-methodology/methodology-specifications/global_freight.pdf"
+    }
+  ],
+  "public_observation_sources": [
+    {
+      "source_id": "baltic_bioi_2026",
+      "name": "Baltic Exchange Indian Ocean Indices circular",
+      "type": "official_route_definition",
+      "url": "https://www.balticexchange.com/en/data-services/Circulars/market-announcements-/category-a/2026/circular-07-26--new-index---baltic-indian-ocean-indices.html",
+      "notes": "Confirms live C18 Gladstone-Dhamra Capesize and P9 Gladstone-Dhamra Panamax from 2026-02-09; page is route-definition evidence, not a free historical series download."
+    },
+    {
+      "source_id": "baltic_bioi_times_2026",
+      "name": "Baltic Exchange BIOI publication-time circular",
+      "type": "official_route_definition",
+      "url": "https://www.balticexchange.com/en/data-services/Circulars/market-announcements-/category-a/2026/circular-40-26--publishing-time-change---baltic-indian-ocean-ind.html",
+      "notes": "Confirms C18/P9 route/unit descriptions and publication on Baltic reports/website."
+    },
+    {
+      "source_id": "platts_pmax_2017",
+      "name": "S&P Global Platts dry bulk TCE launch note",
+      "type": "official_route_definition",
+      "url": "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/010317-platts-launches-dry-bulk-tce-assessments",
+      "notes": "Confirms South Kalimantan-Paradip, Richards Bay-Paradip and Hay Point-Paradip route definitions and cargo sizes."
+    },
+    {
+      "source_id": "platts_ultramax_2017",
+      "name": "S&P Global Platts Ultramax dry bulk TCE launch note",
+      "type": "official_route_definition",
+      "url": "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/113017-platts-to-launch-ultramax-dry-bulk-tce-assessments-jan-2-2018",
+      "notes": "Confirms South Kalimantan-Paradip and Richards Bay-Paradip Ultramax assessments."
+    },
+    {
+      "source_id": "platts_hampton_2014",
+      "name": "S&P Global Platts Hampton Roads-India correction note",
+      "type": "official_observation_example",
+      "url": "https://www.spglobal.com/energy/en/pricing-benchmarks/our-methodology/subscriber-notes/060614-platts-corrects-june-5-assessment-for-dry-bulk-hampton-roads-to-india",
+      "notes": "Public example of a Hampton Roads-India Paradip assessment of $29/mt on 2014-06-05; use only as a verified historical example, not as a complete series."
+    },
+    {
+      "source_id": "dry_freight_wire_2026_03_06",
+      "name": "Dry Freight Wire 06-Mar-2026 public copy",
+      "type": "public_report_candidate",
+      "url": "https://www.scribd.com/document/1009938919/Dry-Freight-Wire-06-Mar-2026",
+      "notes": "Publicly accessible copy reported in research. Do not bulk-scrape; download/view manually, then feed the report into the collector for candidate extraction and human verification."
+    },
+    {
+      "source_id": "ge_weekly_2026_06_03",
+      "name": "GE Weekly Report 03-Jun-2026 public copy",
+      "type": "public_report_candidate",
+      "url": "https://www.scribd.com/document/1051827419/GE-Weekly-Report-3-June-2026-updated",
+      "notes": "Publicly accessible copy reported in research. Use as candidate observation source after human verification."
+    },
+    {
+      "source_id": "coal_trader_2025_07_25",
+      "name": "Coal Trader International 25-Jul-2025 public copy",
+      "type": "public_report_candidate",
+      "url": "https://www.scribd.com/document/894081597/Coal-Trader-International-25-07-2025",
+      "notes": "Publicly accessible copy reported in research. Treat fixture observations as fixture data, not as equivalent to index assessments."
+    }
+  ],
+  "collected_observations_log": [
+    {
+      "date_collected": "2026-09-06",
+      "rows_added": 4,
+      "routes_covered": ["US_HR_PARADIP_PMAX_70", "ID_SK_PARADIP_SUPRA_55", "ID_SK_PARADIP_PMAX_75", "ZA_RB_PARADIP_PMAX_75"],
+      "notes": "First real-data pass under Task 5. One high-confidence first-party Platts index point (Hampton Roads-Paradip, 2014-06-05) plus three medium-confidence public market-report points (Hellenic Shipping News republishing Platts, South Kalimantan-Paradip, 2022-02-09; BigMint, Richards Bay-Paradip, 2026-01-22). All four routes remain far below the 24-observations-per-route minimum required by route_freight_model.py to train a route-specific model, so train_route_freight.py correctly reports status=inactive and every route as skipped rather than fitting a model on 1 point. No fabricated or interpolated rows were added; uncovered lanes (Gladstone-Dhamra, Taman-Paradip, Vostochny-Paradip, Richards Bay-Krishnapatnam, South Kalimantan-Krishnapatnam) still have zero observations and fall through to the existing market-proxy fallback as intended."
+    }
+  ],
+  "collection_rules": [
+    "Never infer a route freight rate from BDI/BDRY/BCI or AIS alone and write it as observed freight_usd_per_t.",
+    "Do not convert TCE ($/day) into $/t without an explicit, documented voyage model and label it derived rather than observed.",
+    "Every non-empty freight value must have a source_url, source_reference, observation_type and verification_status.",
+    "Use verification_status=verified only after human review against the original public source.",
+    "Use confidence=high for official route/index observations directly visible in a first-party or publisher-controlled source; medium for independently published public report observations; low for ambiguous OCR/table reconstruction.",
+    "Fixtures and assessments must not be silently merged; keep observation_type explicit.",
+    "Keep source provenance and retrieval dates for every row."
+  ]
+}

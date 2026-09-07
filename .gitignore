@@ -1,0 +1,27 @@
+# Secrets — never commit these
+.env
+.env.local
+**/.env
+**/.env.local
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Local SQLite dev databases
+backend/freightsight.sqlite
+backend/freightsight.test.sqlite
+
+# Build output
+frontend/dist/
+frontend/dist-ssr/
+
+# Python
+ml-service/**/__pycache__/
+ml-service/venv/
+ml-service/.venv/
+
+# OS/editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json

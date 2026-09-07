@@ -1,0 +1,38 @@
+{
+  "name": "freightsight-backend",
+  "version": "1.0.0",
+  "description": "FreightSight AI - Express + MySQL backend (SQLite dev fallback included)",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "init-db": "node src/db/initAuto.js",
+    "init-mysql-db": "node src/db/initMysql.js",
+    "test": "cross-env NODE_ENV=test jest --runInBand"
+  },
+  "dependencies": {
+    "axios": "^1.7.4",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0",
+    "pdfkit": "^0.20.2"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "setupFiles": [
+      "./test/setupEnv.js"
+    ],
+    "globalSetup": "./test/globalSetup.js",
+    "testTimeout": 20000
+  }
+}

@@ -1,0 +1,16 @@
+# ================================================================
+# FILE: ml-service/requirements.txt
+# ================================================================
+# ml-service/requirements.txt
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pandas==2.2.2
+scikit-learn==1.8.0
+joblib==1.4.2
+numpy==1.26.4
+pydantic==2.8.2
+python-multipart==0.0.9
+# AISStream live WebSocket client
+websocket-client==1.8.0
+# MySQL persistence for live AIS history
+PyMySQL==1.1.1

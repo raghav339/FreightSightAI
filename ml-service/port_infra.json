@@ -1,0 +1,113 @@
+{
+  "_note": "Approximate, illustrative port-infrastructure reference data for the FreightSight AI demo. Replace with authoritative port-authority / IHS-Markit figures before production use.",
+
+  "Newcastle": {
+    "role": "loading", "country": "Australia",
+    "max_loa_m": 300, "max_beam_m": 50, "max_draft_m": 15.2,
+    "cargo_handling_rate_tpd": 12000, "berths": 4,
+    "typical_congestion": "medium", "notes": "World's largest coal export port; frequent queueing at anchorage."
+  },
+  "Gladstone": {
+    "role": "loading", "country": "Australia",
+    "max_loa_m": 292, "max_beam_m": 45, "max_draft_m": 14.8,
+    "cargo_handling_rate_tpd": 10000, "berths": 3,
+    "typical_congestion": "low", "notes": "Coal and bauxite export hub."
+  },
+  "Hay Point": {
+    "role": "loading", "country": "Australia",
+    "max_loa_m": 300, "max_beam_m": 50, "max_draft_m": 17.0,
+    "cargo_handling_rate_tpd": 13500, "berths": 2,
+    "typical_congestion": "medium", "notes": "Deep-water coal terminal, Capesize-capable."
+  },
+  "Norfolk": {
+    "role": "loading", "country": "United States",
+    "max_loa_m": 300, "max_beam_m": 48, "max_draft_m": 15.5,
+    "cargo_handling_rate_tpd": 11000, "berths": 3,
+    "typical_congestion": "low", "notes": "Major US East Coast coal export terminal."
+  },
+  "Baltimore": {
+    "role": "loading", "country": "United States",
+    "max_loa_m": 290, "max_beam_m": 45, "max_draft_m": 13.7,
+    "cargo_handling_rate_tpd": 9000, "berths": 2,
+    "typical_congestion": "low", "notes": "Chesapeake Bay approach draft-limits vessel size."
+  },
+  "Nacala": {
+    "role": "loading", "country": "Mozambique",
+    "max_loa_m": 280, "max_beam_m": 45, "max_draft_m": 15.0,
+    "cargo_handling_rate_tpd": 8500, "berths": 2,
+    "typical_congestion": "medium", "notes": "Deep natural harbour; Vale/Moatize coal corridor."
+  },
+  "Beira": {
+    "role": "loading", "country": "Mozambique",
+    "max_loa_m": 200, "max_beam_m": 32, "max_draft_m": 8.0,
+    "cargo_handling_rate_tpd": 5000, "berths": 2,
+    "typical_congestion": "high", "notes": "Shallow, silted approach channel; Handysize/Supramax only."
+  },
+  "Vostochny": {
+    "role": "loading", "country": "Russia",
+    "max_loa_m": 300, "max_beam_m": 50, "max_draft_m": 15.5,
+    "cargo_handling_rate_tpd": 11500, "berths": 3,
+    "typical_congestion": "medium", "notes": "Pacific coast coal terminal; sanctions/logistics-driven schedule risk."
+  },
+  "Murmansk": {
+    "role": "loading", "country": "Russia",
+    "max_loa_m": 280, "max_beam_m": 45, "max_draft_m": 15.0,
+    "cargo_handling_rate_tpd": 9500, "berths": 2,
+    "typical_congestion": "medium", "notes": "Ice-free Arctic port; winter weather delay risk."
+  },
+  "Samarinda": {
+    "role": "loading", "country": "Indonesia",
+    "max_loa_m": 200, "max_beam_m": 32, "max_draft_m": 9.0,
+    "cargo_handling_rate_tpd": 6000, "berths": 3,
+    "typical_congestion": "high", "notes": "River port; deeper vessels load via ship-to-ship transfer offshore."
+  },
+  "Taboneo": {
+    "role": "loading", "country": "Indonesia",
+    "max_loa_m": 230, "max_beam_m": 36, "max_draft_m": 12.0,
+    "cargo_handling_rate_tpd": 7000, "berths": 1,
+    "typical_congestion": "high", "notes": "Anchorage transshipment point off Kalimantan; barge-fed."
+  },
+
+  "Paradip": {
+    "role": "discharge", "country": "India", "alias": "Paradip Port",
+    "max_loa_m": 300, "max_beam_m": 48, "max_draft_m": 18.1,
+    "cargo_handling_rate_tpd": 25000, "berths": 3,
+    "typical_congestion": "medium", "notes": "Deepest East Coast port; Capesize-capable mechanized coal berths."
+  },
+  "Visakhapatnam": {
+    "role": "discharge", "country": "India", "alias": "Vizag",
+    "max_loa_m": 280, "max_beam_m": 45, "max_draft_m": 17.0,
+    "cargo_handling_rate_tpd": 20000, "berths": 3,
+    "typical_congestion": "high", "notes": "Outer harbour handles large bulkers; frequent congestion."
+  },
+  "Gangavaram": {
+    "role": "discharge", "country": "India",
+    "max_loa_m": 300, "max_beam_m": 48, "max_draft_m": 20.0,
+    "cargo_handling_rate_tpd": 24000, "berths": 2,
+    "typical_congestion": "low", "notes": "Deepest private port on East Coast; Capesize-capable."
+  },
+  "Gopalpur": {
+    "role": "discharge", "country": "India",
+    "max_loa_m": 230, "max_beam_m": 36, "max_draft_m": 13.5,
+    "cargo_handling_rate_tpd": 9000, "berths": 1,
+    "typical_congestion": "low", "notes": "Shallower/smaller port; Panamax and below only."
+  },
+  "Dhamra": {
+    "role": "discharge", "country": "India",
+    "max_loa_m": 300, "max_beam_m": 48, "max_draft_m": 18.5,
+    "cargo_handling_rate_tpd": 22000, "berths": 2,
+    "typical_congestion": "low", "notes": "Deep-draft mechanized coal/iron-ore terminal."
+  },
+  "Sagar Sandheads": {
+    "role": "discharge", "country": "India", "alias": "Sagar Anchorage / Sandheads (Kolkata-Haldia approach)",
+    "max_loa_m": 330, "max_beam_m": 55, "max_draft_m": 22.0,
+    "cargo_handling_rate_tpd": 12000, "berths": 0,
+    "typical_congestion": "high", "notes": "Open-sea transshipment anchorage; motherships lighter into barges for Kolkata/Haldia dock. No draft limit for anchorage itself, but slow transshipment throughput causes idle time."
+  },
+  "Haldia": {
+    "role": "discharge", "country": "India",
+    "max_loa_m": 186, "max_beam_m": 30.5, "max_draft_m": 8.5,
+    "cargo_handling_rate_tpd": 8000, "berths": 2,
+    "typical_congestion": "medium", "notes": "Riverine dock, tide-dependent; Handysize/Supramax only, larger parcels need Sagar transshipment."
+  }
+}

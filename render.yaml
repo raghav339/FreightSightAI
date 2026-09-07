@@ -1,0 +1,106 @@
+# Render Blueprint for FreightSight.
+#
+# Production architecture:
+#   Frontend -> Backend API -> ML service
+#
+# Keep these origins/URLs distinct:
+#   Frontend URL: https://freightsight-frontend.onrender.com
+#   Backend URL:  https://freightsight-backend.onrender.com
+#   ML URL:       https://freightsight-ml-service.onrender.com
+
+services:
+  # ------------------------------------------------------------------
+  # ML service (FastAPI)
+  # ------------------------------------------------------------------
+  - type: web
+    name: freightsight-ml-service
+    runtime: python
+    rootDir: ml-service
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # FastAPI CORS: allow the browser frontend to access ML endpoints
+      # only when they are called directly. The normal application flow
+      # is Frontend -> Backend -> ML.
+      - key: BACKEND_ORIGIN
+        value: "https://freightsight-backend.onrender.com"
+      - key: AISSTREAM_API_KEY
+        sync: false
+      # AIS history uses the same persistent MySQL database as the backend.
+      - key: AIS_DB_CLIENT
+        value: "mysql"
+      - key: AIS_RETENTION_DAYS
+        value: "30"
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        sync: false
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_DATABASE
+        sync: false
+      - key: MYSQL_SSL
+        value: "true"
+      - key: MYSQL_SSL_CA
+        sync: false
+
+  # ------------------------------------------------------------------
+  # Backend API (Node/Express)
+  # ------------------------------------------------------------------
+  - type: web
+    name: freightsight-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: "npm install && npm run init-db"
+    startCommand: "npm start"
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Backend -> ML service. This MUST NOT be the frontend/backend URL.
+      - key: ML_SERVICE_URL
+        value: "https://freightsight-ml-service.onrender.com"
+      # Backend CORS: allow requests from the deployed frontend.
+      - key: FRONTEND_ORIGIN
+        value: "https://freightsight-frontend.onrender.com"
+      - key: JWT_SECRET
+        sync: false
+      # --- Persistent database ---
+      # Render's free tier has no persistent disk, so SQLite gets wiped on
+      # every restart/redeploy. Point this at a free hosted MySQL instead
+      # (e.g. Aiven's always-free MySQL: https://aiven.io/free-mysql-database)
+      # by filling these in from the Render dashboard (Environment tab) —
+      # do NOT commit real credentials into this file.
+      - key: DB_CLIENT
+        value: "mysql"
+      - key: MYSQL_HOST
+        sync: false
+      - key: MYSQL_PORT
+        sync: false
+      - key: MYSQL_USER
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_DATABASE
+        sync: false
+      - key: MYSQL_SSL
+        value: "true"
+      - key: MYSQL_SSL_CA
+        sync: false
+
+  # ------------------------------------------------------------------
+  # Frontend (React/Vite static site)
+  # ------------------------------------------------------------------
+  - type: static
+    name: freightsight-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: dist
+    envVars:
+      # Frontend -> Backend API. Do NOT point this at the ML service.
+      - key: VITE_API_URL
+        value: "https://freightsight-backend.onrender.com/api"

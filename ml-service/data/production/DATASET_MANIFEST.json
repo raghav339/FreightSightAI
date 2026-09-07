@@ -1,0 +1,23 @@
+{
+  "mode": "production",
+  "source": "User-supplied ML_datasets archive",
+  "files": [],
+  "derived_files": [
+    {
+      "file": "route_monthly_features.csv",
+      "source": "Daily_Port_Activity_Data_and_Trade_Estimates.csv",
+      "purpose": "AIS-derived route activity features"
+    },
+    {
+      "file": "vessel_class_master.csv",
+      "source": "port_vessel_compatibility_(cargo_ships)_clean.csv",
+      "purpose": "class-level vessel dimensions/capacity"
+    }
+  ],
+  "critical_gaps": [
+    "No historical route-level freight-rate labels in USD/t",
+    "No direct AIS position/track file; PortWatch is AIS-derived fallback",
+    "No coal/iron-ore price series",
+    "Port infrastructure LOA/beam/draft/handling data for origin ports is partly illustrative"
+  ]
+}

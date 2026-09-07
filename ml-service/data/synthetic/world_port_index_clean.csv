@@ -1,0 +1,11 @@
+port_name,country,latitude,longitude,cargo pier depth (m),channel depth (m),maximum vessel length (m),maximum vessel beam (m),maximum vessel draft (m),is_east_coast_india
+Paradip,India,20.2667,86.7,17.0,18.0,260,40,15.0,True
+Visakhapatnam,India,17.6868,83.2185,16.0,17.0,260,40,14.0,True
+Gangavaram,India,17.63,83.23,18.0,19.0,300,45,16.0,True
+Gopalpur,India,19.26,84.9,13.0,14.0,220,36,12.0,True
+Dhamra,India,20.78,86.92,16.0,17.0,260,40,14.5,True
+Sagar Sandheads,India,21.2,88.0,12.0,13.0,210,34,11.5,True
+Haldia,India,22.03,88.06,10.5,11.5,200,32,10.5,True
+Chennai,India,13.0827,80.2707,16.0,17.0,260,40,14.0,True
+Kamarajar,India,13.25,80.34,16.5,17.5,280,42,14.5,True
+Tuticorin,India,8.7642,78.1348,13.0,14.0,220,36,12.0,True
