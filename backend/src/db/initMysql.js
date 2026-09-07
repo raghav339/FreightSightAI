@@ -98,7 +98,11 @@ async function main() {
   await connection.end();
 }
 
-main().catch((err) => {
-  console.error("Failed to initialize MySQL schema:", err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("Failed to initialize MySQL schema:", err);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };
