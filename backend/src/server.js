@@ -5,6 +5,7 @@ const axios = require("axios");
 const app = require("./app");
 const { refreshDestinationPorts } = require("./config/destinationPorts");
 const { ML_SERVICE_URL } = require("./utils/mlClient");
+const { initializeAuto } = require("./db/initAuto");
 
 const PORT = process.env.PORT || 5000;
 
@@ -25,14 +26,29 @@ function pingMlServiceHealth() {
     });
 }
 
-app.listen(PORT, () => {
-  console.log(`FreightSight backend running on port ${PORT}`);
-  console.log(`DB client: ${process.env.DB_CLIENT || "sqlite"}`);
+async function bootstrap() {
+  try {
+    // Initialize/migrate the database at SERVICE START, never at npm build time.
+    // This keeps Render builds independent of transient DB connectivity while
+    // still guaranteeing the schema exists before the API begins accepting requests.
+    await initializeAuto();
 
-  refreshDestinationPorts();
+    app.listen(PORT, () => {
+      console.log(`FreightSight backend running on port ${PORT}`);
+      console.log(`DB client: ${process.env.DB_CLIENT || "sqlite"}`);
 
-  if (process.env.NODE_ENV !== "test" && process.env.ML_KEEPALIVE !== "false") {
-    pingMlServiceHealth(); // wake it immediately on backend boot/redeploy
-    setInterval(pingMlServiceHealth, KEEPALIVE_INTERVAL_MS).unref();
+      refreshDestinationPorts();
+
+      if (process.env.NODE_ENV !== "test" && process.env.ML_KEEPALIVE !== "false") {
+        pingMlServiceHealth(); // wake it immediately on backend boot/redeploy
+        setInterval(pingMlServiceHealth, KEEPALIVE_INTERVAL_MS).unref();
+      }
+    });
+  } catch (err) {
+    console.error("Backend startup aborted: database initialization failed.");
+    console.error(err?.stack || err?.message || err);
+    process.exit(1);
   }
-});
+}
+
+bootstrap();

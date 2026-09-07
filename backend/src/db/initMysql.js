@@ -55,6 +55,38 @@ async function main() {
   console.log(`Applying schema.sql to ${database} ...`);
   await connection.query(schemaSql);
 
+  // Existing production databases are not changed by `CREATE TABLE IF NOT EXISTS`.
+  // Keep the startup migration idempotent so new application fields are added
+  // without requiring the user to drop/recreate the database.
+  const migrations = [
+    ["forecast_requests", "contract_duration_months", "DECIMAL(6,2) NULL"],
+    ["forecast_requests", "total_program_tons", "DECIMAL(14,2) NULL"],
+    ["forecast_requests", "user_id", "INT NULL"],
+    ["forecast_results", "recommended_vessel_reason", "TEXT NULL"],
+    ["forecast_results", "port_data_warning", "TEXT NULL"],
+  ];
+
+  for (const [tableName, columnName, definition] of migrations) {
+    try {
+      const [rows] = await connection.query(
+        `SELECT COUNT(*) AS count
+           FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+        [database, tableName, columnName]
+      );
+      if (Number(rows[0]?.count || 0) === 0) {
+        await connection.query(
+          `ALTER TABLE \`${tableName}\` ADD COLUMN \`${columnName}\` ${definition}`
+        );
+        console.log(`Added missing MySQL column ${tableName}.${columnName}`);
+      }
+    } catch (err) {
+      // Another instance may have added the column between the information_schema
+      // check and ALTER TABLE. Treat duplicate-column errors as success.
+      if (err.code !== "ER_DUP_FIELDNAME") throw err;
+    }
+  }
+
   for (const [vessel_type, min_capacity_tons, max_capacity_tons] of DEFAULT_VESSELS) {
     await connection.query(
       "INSERT IGNORE INTO vessel_master (vessel_type, min_capacity_tons, max_capacity_tons) VALUES (?, ?, ?)",
