@@ -36,7 +36,7 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
       `INSERT INTO forecast_requests
        (commodity, origin_port, destination_port, shipment_date, cargo_weight_tons, cargo_volume_cbm,
         shipment_mode, vessel_type, distance_km, delay_days, contract_duration_months, total_program_tons, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         commodity,
         origin_port,

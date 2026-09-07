@@ -443,9 +443,19 @@ def check_vessel_port_compatibility(vessel_type: str, port_info: dict | None, *,
     max_beam = port_info.get("max_beam_m")
 
     # World Port Index may expose either cargo pier depth or channel depth.
+    # BUGFIX: the production port data (port_infra_wpi_expanded.json, merged
+    # into every port at import time) only ever populates max_draft_m — it
+    # never sets cargo_depth_m/channel_depth_m. Checking only those two
+    # fields meant applicable_depths was always empty for every real port in
+    # the dataset, so this function's draft check silently never ran (LOA
+    # and beam were still enforced, draft was not) — a Capesize vessel could
+    # be shown as feasible at a port only 4-6m deep. Fall back to
+    # max_draft_m so a port with only that field set still gets a real
+    # draft check.
     cargo_depth = port_info.get("cargo_depth_m")
     channel_depth = port_info.get("channel_depth_m")
-    applicable_depths = [v for v in (cargo_depth, channel_depth) if v is not None]
+    max_draft_field = port_info.get("max_draft_m")
+    applicable_depths = [v for v in (cargo_depth, channel_depth, max_draft_field) if v is not None]
 
     if max_loa is not None and spec["max_loa_m"] > max_loa:
         return False, (
