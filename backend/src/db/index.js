@@ -68,6 +68,18 @@ if (CLIENT === "mysql") {
         }
       }
     }
+    // vessel_constraint_note was VARCHAR(500) — the generated vessel-
+    // substitution explanation can exceed that, and MySQL strict mode
+    // rejects the whole INSERT instead of truncating, which is why
+    // /forecast was returning "generated but could not be saved" for
+    // many routes. MODIFY COLUMN is safe to re-run on every boot.
+    try {
+      await pool.query(
+        "ALTER TABLE forecast_results MODIFY COLUMN vessel_constraint_note TEXT"
+      );
+    } catch (err) {
+      console.error("MySQL migration failed (widen vessel_constraint_note):", err.message);
+    }
   })();
 } else {
   const Database = require("better-sqlite3");

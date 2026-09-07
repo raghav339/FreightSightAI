@@ -77,7 +77,12 @@ CREATE TABLE IF NOT EXISTS forecast_results (
   trend_points JSON,
   -- (b) Vessel Type Optimization — port-infrastructure-aware
   feasible_vessel_types JSON,
-  vessel_constraint_note VARCHAR(500),
+  -- Was VARCHAR(500): the generated vessel-substitution explanation
+  -- (over-capacity + draft-exceeds-port-depth + timing note) can run
+  -- 500-600+ chars, which MySQL strict mode rejects instead of
+  -- truncating. Widened to TEXT — see the matching migration in
+  -- db/index.js for already-deployed databases.
+  vessel_constraint_note TEXT,
   origin_port_info JSON,
   destination_port_info JSON,
   -- (c) Idle Scenario Management
