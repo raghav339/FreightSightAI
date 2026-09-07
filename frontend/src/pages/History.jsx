@@ -25,7 +25,7 @@ export default function History() {
       .then(({ data }) => setRows(data))
       .catch(() => setError("Could not load history"))
       .finally(() => setLoading(false));
-  }, [authLoading, isAuthenticated, t]);
+  }, [authLoading, isAuthenticated]);
 
   return (
     <section className="flex flex-col gap-6">

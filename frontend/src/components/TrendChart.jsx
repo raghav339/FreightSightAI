@@ -14,7 +14,7 @@ import { LineChart as LineChartIcon } from "lucide-react";
 import api from "../api/client.js";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card.jsx";
 
-function ChartTooltip({ active, payload, label, t }) {
+function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   const point = payload[0];
   return (
@@ -99,7 +99,7 @@ export default function TrendChart({ points }) {
                 axisLine={false}
                 width={44}
               />
-              <Tooltip content={<ChartTooltip t={t} />} cursor={{ stroke: "#22D3C4", strokeWidth: 1, strokeDasharray: "4 4" }} />
+              <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#22D3C4", strokeWidth: 1, strokeDasharray: "4 4" }} />
               <Line
                 type="monotone"
                 dataKey="value"

@@ -4,16 +4,16 @@
 #   Frontend -> Backend API -> ML service
 #
 # Keep these origins/URLs distinct:
-#   Frontend URL: https://freightsight-frontend.onrender.com
-#   Backend URL:  https://freightsight-backend.onrender.com
-#   ML URL:       https://freightsight-ml-service.onrender.com
+#   Frontend URL: https://freightsightai-frontend.onrender.com
+#   Backend URL:  https://freightsightai-backend.onrender.com
+#   ML URL:       https://freightsightai-ml-service.onrender.com
 
 services:
   # ------------------------------------------------------------------
   # ML service (FastAPI)
   # ------------------------------------------------------------------
   - type: web
-    name: freightsight-ml-service
+    name: freightsightai-ml-service
     runtime: python
     rootDir: ml-service
     buildCommand: "pip install -r requirements.txt"
@@ -25,7 +25,7 @@ services:
       # only when they are called directly. The normal application flow
       # is Frontend -> Backend -> ML.
       - key: BACKEND_ORIGIN
-        value: "https://freightsight-backend.onrender.com"
+        value: "https://freightsightai-backend.onrender.com"
       - key: AISSTREAM_API_KEY
         sync: false
       # AIS history uses the same persistent MySQL database as the backend.
@@ -52,7 +52,7 @@ services:
   # Backend API (Node/Express)
   # ------------------------------------------------------------------
   - type: web
-    name: freightsight-backend
+    name: freightsightai-backend
     runtime: node
     rootDir: backend
     buildCommand: "npm install && npm run init-db"
@@ -62,10 +62,10 @@ services:
         value: "20"
       # Backend -> ML service. This MUST NOT be the frontend/backend URL.
       - key: ML_SERVICE_URL
-        value: "https://freightsight-ml-service.onrender.com"
+        value: "https://freightsightai-ml-service.onrender.com"
       # Backend CORS: allow requests from the deployed frontend.
       - key: FRONTEND_ORIGIN
-        value: "https://freightsight-frontend.onrender.com"
+        value: "https://freightsightai-frontend.onrender.com"
       - key: JWT_SECRET
         sync: false
       # --- Persistent database ---
@@ -95,7 +95,7 @@ services:
   # Frontend (React/Vite static site)
   # ------------------------------------------------------------------
   - type: static
-    name: freightsight-frontend
+    name: freightsightai-frontend
     runtime: static
     rootDir: frontend
     buildCommand: "npm install && npm run build"
@@ -103,4 +103,4 @@ services:
     envVars:
       # Frontend -> Backend API. Do NOT point this at the ML service.
       - key: VITE_API_URL
-        value: "https://freightsight-backend.onrender.com/api"
+        value: "https://freightsightai-backend.onrender.com/api"

@@ -7,7 +7,7 @@ import {
 import { Button } from "../components/ui/button.jsx";
 import { Badge } from "../components/ui/badge.jsx";
 
-function useFeatures(t) {
+function useFeatures() {
   return [
     { icon: TrendingUp, title:"Rate Forecasting", body:"A RandomForestRegressor trained on lag, rolling-average, and calendar features predicts the freight rate (USD/ton) for your route and date.", accent:"text-signal", tag:"FORECAST" },
     { icon: ShieldAlert, title:"Risk Classification", body:"A RandomForestClassifier labels each forecast low, medium, or high risk based on historical rate volatility on that route.", accent:"text-amber", tag:"RISK" },
@@ -115,7 +115,7 @@ function DigitalTwin() {
 }
 
 export default function Landing() {
-  const FEATURES=useFeatures(t);
+  const FEATURES=useFeatures();
   return (
     <div className="flex flex-col gap-12 sm:gap-16">
       <section className="relative overflow-hidden rounded-[2rem] border border-hull-600/80 bg-hull-800/45 shadow-[0_35px_100px_-45px_rgba(0,0,0,.95)]">

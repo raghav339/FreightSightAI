@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { ClipboardList, Server, Cpu, DatabaseZap, MonitorSmartphone } from "lucide-react";
 import { Card } from "../components/ui/card.jsx";
 
-function useSteps(t) {
+function useSteps() {
   return [
     { icon: ClipboardList, title: "Enter shipment details", body: "Tell FreightSight the commodity, route, cargo weight, and shipment month — the same inputs a charterer would use to fix a vessel." },
     { icon: Server, title: "Request hits the ML service", body: "The backend validates the request and forwards it to a dedicated Python service running the trained forecasting models." },
@@ -14,7 +14,7 @@ function useSteps(t) {
 }
 
 export default function About() {
-  const STEPS = useSteps(t);
+  const STEPS = useSteps();
   return (
     <section className="flex flex-col gap-8">
       <header className="flex flex-col gap-1.5">
