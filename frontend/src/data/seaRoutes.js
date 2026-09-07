@@ -2,6 +2,14 @@
 // These are visual shipping corridors (not navigational guidance), chosen to
 // follow open-ocean approaches and major maritime passages instead of drawing
 // a straight line through land.
+//
+// IMPORTANT: the map renders these as plain straight segments between
+// consecutive points (no coastline-aware pathing). That means every pair of
+// waypoints must itself have clear open water between them -- it's not enough
+// for each individual point to be "in the ocean". When routes must cross an
+// archipelago, prefer wide, well-known straits (Torres Strait, Lombok Strait,
+// Bab-el-Mandeb, etc.) with generous margin, and add enough intermediate
+// points that no single segment tries to cut a corner across a landmass.
 
 const INDIA_DESTS = new Set([
   "Paradip", "Visakhapatnam", "Gangavaram", "Gopalpur", "Dhamra",
@@ -12,6 +20,16 @@ const AUSTRALIA_ORIGINS = new Set(["Newcastle", "Hay Point", "Gladstone"]);
 const INDONESIA_ORIGINS = new Set(["Samarinda", "Taboneo"]);
 const MOZAMBIQUE_ORIGINS = new Set(["Nacala", "Beira"]);
 const US_ORIGINS = new Set(["Norfolk", "Baltimore"]);
+
+// Shared open-ocean corridor once a route has cleared the Indonesian
+// archipelago to the south and is heading northwest across the Indian Ocean
+// toward the Bay of Bengal. Reused by the Australia and Indonesia branches.
+const SOUTH_OF_JAVA_TO_BAY_OF_BENGAL = [
+  [110.0, -13.0], // open Indian Ocean, well south of Java's south coast
+  [97.0, -8.0],   // open ocean, well south/west of Sumatra
+  [88.0, -2.0],   // open ocean, west of the Nicobar Islands
+  [84.5, 5.3],    // Bay of Bengal, open water
+];
 
 function finalIndiaApproach(destination) {
   if (destination === "Tuticorin") {
@@ -45,47 +63,51 @@ export function getSeaRouteWaypoints(origin, destination) {
   let waypoints;
 
   if (AUSTRALIA_ORIGINS.has(origin)) {
-    // East-coast Australia -> Torres Strait -> Indonesia/Malacca ->
-    // Bay of Bengal -> south of Sri Lanka -> India's east coast.
+    // East-coast Australia -> Coral Sea -> Torres Strait -> Arafura Sea ->
+    // south of Timor/Sumba/Java/Sumatra (open Indian Ocean, avoids
+    // threading the Java Sea / Malacca Strait entirely) -> Bay of Bengal ->
+    // India's east coast.
     waypoints = [
       "origin",
       [153.0, -26.0],
       [153.8, -18.0],
       [150.5, -12.0],
       [145.0, -10.5],
-      [140.0, -9.0],
-      [128.0, -7.0],
-      [116.0, -3.0],
-      [108.0, 0.0],
-      [104.0, 2.5], // Malacca Strait / western entrance
-      [96.0, 4.5],
-      [90.0, 5.0],
-      [84.5, 5.3],
+      [142.3, -10.4], // Torres Strait (Prince of Wales Channel)
+      [135.0, -10.5], // Arafura Sea, south of the Aru Islands
+      [128.0, -11.5], // Timor Sea, south of Timor
+      [120.0, -13.0], // south of Sumba, into open Indian Ocean
+      ...SOUTH_OF_JAVA_TO_BAY_OF_BENGAL,
       ...finalIndiaApproach(destination),
       "destination",
     ];
   } else if (INDONESIA_ORIGINS.has(origin)) {
-    // Indonesian loading areas -> Java/Karimata passage -> Malacca ->
-    // Bay of Bengal -> India.
+    // Indonesian loading areas sit inside the archipelago, so these route
+    // out via Makassar Strait / the Java Sea and then south through the
+    // Lombok Strait (wide, deep, and a standard shipping passage) into the
+    // open Indian Ocean, joining the same southern corridor as the
+    // Australia route.
     waypoints = [
       "origin",
-      [116.5, -3.0],
-      [113.0, -4.5],
-      [109.0, -2.0],
-      [106.0, 0.0],
-      [103.8, 2.5],
-      [96.0, 4.5],
-      [90.0, 5.0],
-      [84.5, 5.3],
+      origin === "Samarinda"
+        ? [118.0, -2.0] // Makassar Strait, heading south from east Kalimantan
+        : [114.8, -4.5], // Java Sea, heading southeast from south Kalimantan
+      [116.5, -6.0], // Flores/Bali Sea, north of Lombok
+      [115.5, -8.6], // Lombok Strait
+      [113.0, -11.0], // open Indian Ocean, south of Bali/Lombok
+      ...SOUTH_OF_JAVA_TO_BAY_OF_BENGAL,
       ...finalIndiaApproach(destination),
       "destination",
     ];
   } else if (MOZAMBIQUE_ORIGINS.has(origin)) {
-    // Mozambique -> open Indian Ocean, kept east of Madagascar -> India.
+    // Mozambique -> north through the Mozambique Channel, clearing
+    // Madagascar's northern tip (Cap d'Ambre) rather than cutting straight
+    // across the island -> open Indian Ocean -> India.
     waypoints = [
       "origin",
-      [43.0, -16.5],
-      [50.5, -17.0],
+      [42.0, -14.0], // mid Mozambique Channel
+      [45.0, -11.5], // channel narrowing, east of the Comoros
+      [50.5, -11.0], // clear of Madagascar's northern tip
       [60.0, -12.0],
       [69.0, -6.0],
       [76.0, -1.0],
@@ -103,7 +125,7 @@ export function getSeaRouteWaypoints(origin, destination) {
       [-18.0, -17.0],
       [-8.0, -29.0],
       [17.5, -37.0], // south of Cape of Good Hope
-      [28.0, -34.5],
+      [28.0, -35.5], // clear of South Africa's south coast
       [42.0, -29.0],
       [57.0, -20.0],
       [69.0, -10.0],
@@ -113,10 +135,11 @@ export function getSeaRouteWaypoints(origin, destination) {
       "destination",
     ];
   } else if (origin === "Vostochny") {
-    // Russian Far East -> South China Sea -> Malacca -> Indian Ocean.
+    // Russian Far East -> Sea of Japan -> East China Sea -> South China Sea
+    // -> Malacca -> Indian Ocean.
     waypoints = [
       "origin",
-      [130.0, 36.0],
+      [131.0, 37.0], // Sea of Japan, clear of the Korean coast
       [125.0, 28.0],
       [120.0, 20.0],
       [116.0, 12.0],
