@@ -181,7 +181,7 @@ def ais_status():
     return ais_collector.status()
 
 
-@app.get("/ais/db-ping")
+@app.api_route("/ais/db-ping", methods=["GET", "HEAD"])
 def ais_db_ping():
     """Run a trivial query against the AIS database and report round-trip time.
 
@@ -233,7 +233,7 @@ def ais_idle_vessels(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/health", response_model=HealthResponse)
+@app.api_route("/health", methods=["GET", "HEAD"], response_model=HealthResponse)
 def health():
     # Health checks should never compete with a real user request for the
     # model-loading lock. Startup warmup already loads the bundle in the
