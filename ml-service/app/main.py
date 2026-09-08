@@ -181,6 +181,22 @@ def ais_status():
     return ais_collector.status()
 
 
+@app.get("/ais/db-ping")
+def ais_db_ping():
+    """Run a trivial query against the AIS database and report round-trip time.
+
+    Point an external uptime monitor (UptimeRobot, cron-job.org, etc.) at
+    this endpoint directly. Unlike /health, this always issues a real query,
+    which is what keeps a free-tier hosted database (e.g. Aiven) from being
+    auto-powered-off for inactivity — pinging /health alone doesn't touch
+    the DB at all.
+    """
+    try:
+        return ais_collector.db_ping()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"DB ping failed: {exc}") from exc
+
+
 @app.get("/ais/route-features")
 def ais_route_features(origin_port: str, destination_port: str, lookback_hours: int = 24):
     try:

@@ -523,6 +523,26 @@ class AISStreamCollector:
             except Exception:
                 pass
 
+    def db_ping(self) -> dict[str, Any]:
+        """Run a trivial query against the AIS database and report round-trip time.
+
+        Intended for an external uptime monitor (UptimeRobot, cron-job.org,
+        etc.) to hit directly. Unlike /health, this guarantees a real query
+        reaches the database on every check — independent of whether the
+        AISStream websocket happens to be connected or quiet — which is
+        what a free-tier hosted DB (e.g. Aiven) needs to see to avoid being
+        auto-powered-off for inactivity.
+        """
+        started = time.monotonic()
+        self._query_all("SELECT 1")
+        elapsed_ms = round((time.monotonic() - started) * 1000, 1)
+        return {
+            "ok": True,
+            "database": self.db_client,
+            "elapsed_ms": elapsed_ms,
+            "checked_at": _utcnow().isoformat(),
+        }
+
     def status(self):
         return {
             "enabled": self.enabled,
