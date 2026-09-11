@@ -218,6 +218,11 @@ export default function ResultCards({ result }) {
 
       <WideCard icon={Sparkles} iconClass="text-signal" label={"AI summary"}>
         <p className="text-[0.95rem] leading-relaxed text-slate-300">{result.reasoning}</p>
+        {result.vessel_status === "NO_FEASIBLE_VESSEL" && (
+          <p className="mt-2 text-xs leading-relaxed text-amber-300">
+            {"Note: no vessel class actually fits both ports for this cargo — any vessel named above is an indicative capacity match only, not a real recommendation."}
+          </p>
+        )}
       </WideCard>
 
       {result.forecast_curve?.length > 0 && (

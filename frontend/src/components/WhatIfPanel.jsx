@@ -175,15 +175,27 @@ export default function WhatIfPanel({ baseRequest }) {
             <div className="grid grid-cols-1 gap-4 border-t border-hull-600/60 pt-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <span className="text-[0.68rem] font-semibold uppercase tracking-widest text-slate-500">
-                  {"Recommended vessel"}
+                  {result.vessel_status === "NO_FEASIBLE_VESSEL" ? "Vessel fit" : "Recommended vessel"}
                 </span>
-                <span className="font-display text-base font-medium text-paper-50">
-                  {result.recommended_vessel_type}
+                <span
+                  className={
+                    result.vessel_status === "NO_FEASIBLE_VESSEL"
+                      ? "font-display text-base font-medium text-amber-300"
+                      : "font-display text-base font-medium text-paper-50"
+                  }
+                >
+                  {result.vessel_status === "NO_FEASIBLE_VESSEL" ? "None feasible" : result.recommended_vessel_type}
                 </span>
-                {result.feasible_vessel_types?.length > 0 && (
-                  <span className="text-xs text-slate-500">
-                    {"Feasible"}: {result.feasible_vessel_types.join(", ")}
+                {result.vessel_status === "NO_FEASIBLE_VESSEL" ? (
+                  <span className="text-xs text-amber-300">
+                    {result.vessel_rejection_reason || "No vessel class fits both ports for this cargo."}
                   </span>
+                ) : (
+                  result.feasible_vessel_types?.length > 0 && (
+                    <span className="text-xs text-slate-500">
+                      {"Feasible"}: {result.feasible_vessel_types.join(", ")}
+                    </span>
+                  )
                 )}
               </div>
 

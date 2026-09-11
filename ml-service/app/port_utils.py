@@ -178,16 +178,56 @@ def _load_wpi_expanded_port_infra():
     entry for any field the WPI extract didn't cover for that port —
     covers every port referenced anywhere in the app (train.py's
     EAST_COAST + origins), not just the original 18.
+
+    BUGFIX (2026-09-11): this used to unconditionally overwrite any field
+    the WPI extract had a value for, even when port_infra.json already
+    carried an explicit, dated figure for that same field. WPI's depth
+    numbers are a *conservative minimum* from a 5-foot-banded letter code
+    on a navigational-chart index that isn't always current for major bulk
+    terminals -- e.g. it reported 6.4 m for Gladstone (a Capesize coal
+    port whose port-authority procedures manual states ~17 m sailing
+    draft is generally available) and 11.0 m for Paradip (whose inner
+    harbour was dredged to 18.5 m in Aug 2026). Silently overwriting the
+    master figure with that shallower estimate was making real ports look
+    too shallow for their typical vessel class, which is what was
+    producing "no feasible vessel" for most routes.
+
+    Fix: WPI now only ever FILLS a field the master entry doesn't already
+    have a value for -- it enriches gaps, it never overrides a populated
+    master-file figure (verified or not). port_infra.json is the
+    reference/master layer per its own docstring; WPI is a fallback, not
+    an override.
     """
     p = os.path.join(DATA_DIR, "port_infra_wpi_expanded.json")
     if not os.path.exists(p):
         return
+    # Companion/provenance keys (e.g. "max_draft_m_source" describes
+    # "max_draft_m") should be skipped together with their base field --
+    # otherwise a kept master value could end up labelled with WPI's
+    # provenance note, which would misattribute where the number came from.
+    _companion_suffixes = ("_source", "_tier", "_basis", "_estimated")
+
+    def _base_field(key):
+        for suffix in _companion_suffixes:
+            if key.endswith(suffix):
+                return key[: -len(suffix)]
+        return None
+
     try:
         with open(p) as f:
             expanded = json.load(f)
         for name, entry in expanded.get("ports", {}).items():
             merged = PORT_INFRA.get(name, {})
-            merged.update({k: v for k, v in entry.items() if v is not None})
+            for k, v in entry.items():
+                if v is None:
+                    continue
+                base = _base_field(k)
+                if merged.get(base if base else k) is not None:
+                    # Master already has a value for this field (or the
+                    # field this key describes) -- keep it, and don't
+                    # attach WPI's provenance note to a kept master value.
+                    continue
+                merged[k] = v
             PORT_INFRA[name] = merged
     except Exception as exc:
         print(f"WPI-expanded port infra load warning: {exc}")
@@ -342,6 +382,39 @@ def _load_vessel_dataset():
     return grouped
 
 VESSEL_SPECS = _load_vessel_dataset()
+
+# BUGFIX: check_vessel_port_compatibility() (and the rejection-value
+# builder in utils.py) judged a class's PORT FIT against
+# VESSEL_LIMIT_SPECS's hardcoded absolute-maximum dimensions (e.g. Panamax
+# up to 14.5 m draft, Handysize up to 190 m LOA) — the largest vessel that
+# could theoretically exist in that class. Meanwhile recommend_vessel()
+# and every "typical draft/length" string shown to the user quote the much
+# smaller dataset-derived MEDIAN for that class (e.g. Panamax 13.5 m,
+# Handysize 180 m). That mismatch meant the feasibility check was silently
+# stricter than the vessel it claimed to be describing, so real, everyday
+# ports failed the fit check for a class whose *typical* representative
+# would have fit comfortably (verified: at 50k+ t cargo this failed 85%+
+# of the origin/destination pairs in the app's own dropdowns, and 100% at
+# 90k+ t, since no listed port reaches Panamax/Capesize's class-ceiling
+# draft on both ends).
+#
+# Fix: overwrite the port-fit dimensions with the SAME typical (median)
+# length/beam/draft already computed in VESSEL_SPECS, so the feasibility
+# check and the "recommended vessel" explanation always describe the same
+# vessel. min_dwt/max_dwt (capacity banding) are untouched — they aren't
+# consumed by the port-fit check. Fall back to the original hardcoded
+# figure only if the dataset is missing a value for that class.
+for _row in VESSEL_SPECS.itertuples():
+    _spec = VESSEL_LIMIT_SPECS.get(_row.vessel_class)
+    if _spec is None:
+        continue
+    if pd.notna(_row.typical_length):
+        _spec["max_loa_m"] = float(_row.typical_length)
+    if pd.notna(_row.typical_beam):
+        _spec["max_beam_m"] = float(_row.typical_beam)
+    if pd.notna(_row.typical_draft):
+        _spec["max_draft_m"] = float(_row.typical_draft)
+
 
 def get_vessel_specs():
     """

@@ -43,7 +43,40 @@ export default function COAOptimizer(){
       <label className="text-sm text-slate-300">Current spot rate ($/t, optional)<input type="number" min="0.01" step="0.01" value={form.current_spot_rate_usd_per_ton} onChange={e=>set("current_spot_rate_usd_per_ton",e.target.value)} placeholder="Required for $ savings" className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
       <div className="flex items-end"><Button disabled={loading} type="submit">{loading?"Optimizing…":"Optimize COA"}</Button></div>
     </form>
-    {error&&<div className="rounded-xl border border-port/30 bg-port/10 p-4 text-sm text-port">{error}</div>}
+    {error&&(()=>{
+      const NO_VESSEL_PREFIX="No vessel class is feasible at both origin and destination ports for the COA program.";
+      const isNoVessel=error.startsWith(NO_VESSEL_PREFIX);
+      if(!isNoVessel){
+        return <div className="rounded-xl border border-port/30 bg-port/10 p-4 text-sm text-port">{error}</div>;
+      }
+      // Per-class reasons are appended after the summary sentence, separated
+      // by " | ", each formatted as "VesselClass: reason".
+      const detail=error.slice(NO_VESSEL_PREFIX.length).trim();
+      const reasons=detail?detail.split(" | ").map(part=>{
+        const sep=part.indexOf(": ");
+        return sep===-1?{vessel:null,reason:part}:{vessel:part.slice(0,sep),reason:part.slice(sep+2)};
+      }):[];
+      return (
+        <div className="rounded-xl border border-port/30 bg-port/10 p-4">
+          <div className="text-sm font-semibold text-port">{"No vessel is feasible for this route"}</div>
+          <p className="mt-1 text-xs leading-relaxed text-port/90">
+            {"Every vessel class was checked against the cargo weight and against both ports' physical limits (draft, beam, LOA), and none cleared all of them at both ends."}
+          </p>
+          {reasons.length>0 && (
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {reasons.map((r,i)=>(
+                <li key={i} className="text-xs leading-relaxed text-port/90">
+                  {r.vessel && <span className="font-mono font-semibold text-port">{r.vessel}</span>}
+                  {r.vessel && " — "}
+                  {r.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-3 text-xs text-slate-500">{"Try a smaller cargo weight per voyage, a different origin/destination pair, or check the port infrastructure data for this route."}</p>
+        </div>
+      );
+    })()}
     {result&&<div className="flex flex-col gap-5">
       <div className="rounded-2xl border border-signal/20 bg-signal/5 p-5">
         <div className="text-xs uppercase tracking-widest text-slate-500">Recommended strategy</div>

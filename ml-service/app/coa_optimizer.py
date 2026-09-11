@@ -42,13 +42,22 @@ def optimize(req, route_model: RouteModel, port_utils):
     # capacity is re-tested against each class's DWT below rather than using
     # feasible_vessels_both_ports()'s single-parcel cargo-capacity check.
     candidates=[]
+    rejected=[]
     contract_days = duration * 30.4375
     for cls in ["Handysize","Supramax","Panamax","Capesize"]:
         spec=next((x for x in port_utils.get_vessel_specs() if x["vessel_class"]==cls),None)
         if not spec: continue
-        ok_o,_=port_utils.check_vessel_port_compatibility(cls,origin,label="origin port")
-        ok_d,_=port_utils.check_vessel_port_compatibility(cls,dest,label="destination port")
-        if not (ok_o and ok_d): continue
+        ok_o,reason_o=port_utils.check_vessel_port_compatibility(cls,origin,label="origin port")
+        ok_d,reason_d=port_utils.check_vessel_port_compatibility(cls,dest,label="destination port")
+        if not (ok_o and ok_d):
+            # Report both ends when both fail, since a class can be
+            # simultaneously too big for the origin and the destination.
+            reasons=[r for r in (reason_o if not ok_o else None, reason_d if not ok_d else None) if r]
+            rejected.append({
+                "vessel_type": cls,
+                "rejection_reason": " ".join(reasons) or "Does not fit the port constraints at one or both ends.",
+            })
+            continue
         cap=max(float(spec["typical_dwt"])*VESSEL_LOAD_FACTOR.get(cls,.9),1)
         voyages=int(math.ceil(total/cap))
         parcel=total/voyages
@@ -80,7 +89,11 @@ def optimize(req, route_model: RouteModel, port_utils):
             "operational_index":round(ops_index,1),"risk_buffer_pct":round((risk_mult-1)*100,2),
         })
     if not candidates:
-        raise ValueError("No vessel class is feasible at both origin and destination ports for the COA program.")
+        detail=" | ".join(f"{r['vessel_type']}: {r['rejection_reason']}" for r in rejected)
+        raise ValueError(
+            "No vessel class is feasible at both origin and destination ports for the COA program."
+            + (f" {detail}" if detail else "")
+        )
     feasible_schedule = [c for c in candidates if c["schedule_feasible"]]
     ranking_pool = feasible_schedule or candidates
     ranking_pool.sort(key=lambda x: (x["expected_freight_cost_usd"] if x["expected_freight_cost_usd"] is not None else x["operational_index"]))
