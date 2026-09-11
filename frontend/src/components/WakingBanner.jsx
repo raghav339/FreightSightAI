@@ -18,7 +18,9 @@ export default function WakingBanner() {
       ? "Still waking up — retrying automatically…"
       : state.phase === "comparing"
       ? "Comparing every loading port with live vessel data — this can take up to 20 seconds…"
-      : "Waking up the forecasting service — this can take up to a minute on a cold instance…";
+      : state.phase === "working"
+      ? "Still working on your forecast…"
+      : "This is taking longer than usual — waking up the forecasting service can take up to a minute on a cold instance…";
 
   return (
     <div

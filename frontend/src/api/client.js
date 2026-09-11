@@ -25,10 +25,18 @@ const api = axios.create({
 //
 // Wakeup UX: routes that proxy through to ml-service can legitimately sit
 // quiet for tens of seconds on a Render cold start. Rather than let that
-// look indistinguishable from a hang, start a short timer on every request
-// to one of these paths; if it hasn't resolved in SLOW_HINT_DELAY_MS, tell
-// any subscribed UI (see components/WakingBanner.jsx) so it can show a
-// "waking up" hint instead of leaving the user staring at a static form.
+// look indistinguishable from a hang, start timers on every request to one
+// of these paths and tell any subscribed UI (see components/WakingBanner.jsx)
+// so it can show a hint instead of leaving the user staring at a static form.
+//
+// Two-tier timing: a warm instance doing real model inference + network
+// round trip routinely takes a few seconds on its own — that is NOT a cold
+// start, and saying "waking up... up to a minute" at that point is just
+// wrong and trains people to distrust the banner. So we show a neutral
+// "still working" hint fairly quickly (SLOW_HINT_DELAY_MS), and only
+// escalate to actual cold-start copy if the request is still outstanding
+// much later (COLD_START_DELAY_MS) — which is the regime where a real
+// Render free-tier boot is the likely explanation.
 const ML_BACKED_PATH_HINTS = [
   "/forecast", "/route-forecast", "/coa-optimize", "/compare-origins",
   "/idle-alternatives", "/whatif", "/routes", "/vessels", "/ports",
@@ -42,6 +50,7 @@ const ML_BACKED_PATH_HINTS = [
 // instead of being lumped in with an actual cold-start probe.
 const FAN_OUT_PATH_HINTS = ["/compare-origins", "/idle-alternatives"];
 const SLOW_HINT_DELAY_MS = 4000;
+const COLD_START_DELAY_MS = 15000;
 
 function looksMlBacked(url = "") {
   return ML_BACKED_PATH_HINTS.some((path) => url.includes(path));
@@ -51,10 +60,14 @@ function looksFanOut(url = "") {
   return FAN_OUT_PATH_HINTS.some((path) => url.includes(path));
 }
 
-function clearSlowTimer(config) {
+function clearSlowTimers(config) {
   if (config?.__mlSlowTimer) {
     clearTimeout(config.__mlSlowTimer);
     config.__mlSlowTimer = undefined;
+  }
+  if (config?.__mlColdStartTimer) {
+    clearTimeout(config.__mlColdStartTimer);
+    config.__mlColdStartTimer = undefined;
   }
 }
 
@@ -66,10 +79,19 @@ api.interceptors.request.use((config) => {
   }
 
   if (looksMlBacked(config.url)) {
-    const phase = looksFanOut(config.url) ? "comparing" : "probing";
+    const isFanOut = looksFanOut(config.url);
+    // Tier 1: quick, honest "still working" hint — never claims a cold start.
     config.__mlSlowTimer = setTimeout(() => {
-      notifyMlWakeup({ active: true, phase });
+      notifyMlWakeup({ active: true, phase: isFanOut ? "comparing" : "working" });
     }, SLOW_HINT_DELAY_MS);
+    // Tier 2: only for single-origin calls, only after a genuinely long
+    // wait, escalate to the cold-start-specific copy. Fan-out calls stay on
+    // "comparing" the whole time since their slowness is explained already.
+    if (!isFanOut) {
+      config.__mlColdStartTimer = setTimeout(() => {
+        notifyMlWakeup({ active: true, phase: "probing" });
+      }, COLD_START_DELAY_MS);
+    }
   }
 
   return config;
@@ -83,13 +105,13 @@ api.interceptors.request.use((config) => {
 // even if the first round-trip didn't survive to see it.
 api.interceptors.response.use(
   (response) => {
-    clearSlowTimer(response.config);
+    clearSlowTimers(response.config);
     notifyMlWakeup({ active: false });
     return response;
   },
   async (error) => {
     const config = error.config;
-    clearSlowTimer(config);
+    clearSlowTimers(config);
 
     const retryable = error.response?.status === 503 && error.response?.data?.retryable === true;
 
