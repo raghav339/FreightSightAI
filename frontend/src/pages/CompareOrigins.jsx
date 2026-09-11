@@ -47,7 +47,7 @@ export default function CompareOrigins() {
       const payload = {
         commodity: form.commodity,
         destination_port: form.destination_port,
-        shipment_date: form.shipment_date ? `${form.shipment_date}-01` : "",
+        shipment_date: form.shipment_date,
         cargo_weight_tons: Number(form.cargo_weight_tons),
         contract_duration_months: form.contract_duration_months ? Number(form.contract_duration_months) : undefined,
         total_program_tons: form.total_program_tons ? Number(form.total_program_tons) : undefined,
@@ -111,9 +111,9 @@ export default function CompareOrigins() {
                 </Select>
               </Field>
 
-              <Field label={"Shipment month"}>
+              <Field label={"Shipment date"}>
                 <Input
-                  type="month"
+                  type="date"
                   required
                   value={form.shipment_date}
                   onChange={(e) => update("shipment_date", e.target.value)}

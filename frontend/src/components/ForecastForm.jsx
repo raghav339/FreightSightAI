@@ -100,7 +100,7 @@ export default function ForecastForm({ onResult }) {
     try {
       const payload = {
         ...form,
-        shipment_date: form.shipment_date ? `${form.shipment_date}-01` : "",
+        shipment_date: form.shipment_date,
         cargo_weight_tons: Number(form.cargo_weight_tons),
         cargo_volume_cbm: form.cargo_volume_cbm ? Number(form.cargo_volume_cbm) : undefined,
         distance_km: form.distance_km ? Number(form.distance_km) : undefined,
@@ -189,9 +189,9 @@ export default function ForecastForm({ onResult }) {
               </Select>
             </Field>
 
-            <Field label={"Shipment month"}>
+            <Field label={"Shipment date"}>
               <Input
-                type="month"
+                type="date"
                 required
                 value={form.shipment_date}
                 onChange={(e) => update("shipment_date", e.target.value)}

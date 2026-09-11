@@ -7,7 +7,7 @@ module.exports = {
   "route": "Route",
   "commodity": "Commodity",
   "cargo": "Cargo",
-  "shipmentMonth": "Shipment month",
+  "shipmentMonth": "Shipment date",
   "mode": "Mode",
   "rateForecast": "Freight Rate Forecast & Market Timing",
   "bdryProxy": "Predicted BDRY freight-rate proxy",

@@ -5,7 +5,7 @@ import { Card } from "../components/ui/card.jsx";
 
 function useSteps() {
   return [
-    { icon: ClipboardList, title: "Enter shipment details", body: "Tell FreightSight the commodity, route, cargo weight, and shipment month — the same inputs a charterer would use to fix a vessel." },
+    { icon: ClipboardList, title: "Enter shipment details", body: "Tell FreightSight the commodity, route, cargo weight, and shipment date — the same inputs a charterer would use to fix a vessel." },
     { icon: Server, title: "Request hits the ML service", body: "The backend validates the request and forwards it to a dedicated Python service running the trained forecasting models." },
     { icon: Cpu, title: "Models generate a forecast", body: "A RandomForestRegressor predicts the freight rate while a RandomForestClassifier scores market risk, both trained on historical BDRY and route data." },
     { icon: DatabaseZap, title: "Result is logged", body: "Every forecast, along with its inputs and outputs, is saved to your history so nothing risky slips by unnoticed." },
