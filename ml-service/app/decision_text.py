@@ -73,22 +73,23 @@ TEXT = {'rise': 'rise',
  'timing_flat': 'Freight rates look stable.',
  'draft_exceeds_max': 'A typical draft of {draft:.1f} m exceeds the maximum permitted draft of {max_draft:.1f} m.'}
 
-REJECTION_TEXT = {'cargo': "Cargo of {cargo:,.0f} t exceeds this vessel class's typical DWT capacity of {dwt:,.0f} t.",
- 'loa': '{port} LOA limit: vessel LOA ({value:.0f} m) exceeds the port maximum ({limit:.0f} m).',
- 'beam': '{port} beam limit: vessel beam ({value:.1f} m) exceeds the port maximum ({limit:.1f} m).',
- 'draft': '{port} draft limit: vessel draft ({value:.1f} m) exceeds the port usable depth ({limit:.1f} m).',
- 'unknown': 'Vessel feasibility cannot be confirmed because infrastructure data is unavailable for {port}.',
- 'generic': 'This vessel class is not feasible for the stated cargo and port constraints.'}
+REJECTION_TEXT = {'cargo': "Cargo of {cargo:,.0f} t exceeds {vessel}'s typical DWT capacity of {dwt:,.0f} t.",
+ 'loa': '{port} LOA limit: {vessel} LOA ({value:.0f} m) exceeds the port maximum ({limit:.0f} m).',
+ 'beam': '{port} beam limit: {vessel} beam ({value:.1f} m) exceeds the port maximum ({limit:.1f} m).',
+ 'draft': '{port} draft limit: {vessel} draft ({value:.1f} m) exceeds the port usable depth ({limit:.1f} m).',
+ 'unknown': 'Vessel feasibility cannot be confirmed for {vessel} because infrastructure data is unavailable for {port}.',
+ 'generic': '{vessel} is not feasible for the stated cargo and port constraints.'}
 
 
-def build_rejection_reason(*, kind, port=None, value=None, limit=None, cargo=None, dwt=None):
+def build_rejection_reason(*, kind, vessel=None, port=None, value=None, limit=None, cargo=None, dwt=None):
+    vessel = vessel or "This vessel class"
     if kind == "cargo":
-        return REJECTION_TEXT["cargo"].format(cargo=cargo, dwt=dwt)
+        return REJECTION_TEXT["cargo"].format(vessel=vessel, cargo=cargo, dwt=dwt)
     if kind in ("loa", "beam", "draft"):
-        return REJECTION_TEXT[kind].format(port=port, value=value, limit=limit)
+        return REJECTION_TEXT[kind].format(vessel=vessel, port=port, value=value, limit=limit)
     if kind == "unknown":
-        return REJECTION_TEXT["unknown"].format(port=port)
-    return REJECTION_TEXT["generic"]
+        return REJECTION_TEXT["unknown"].format(vessel=vessel, port=port)
+    return REJECTION_TEXT["generic"].format(vessel=vessel)
 
 
 def build_prediction_text(*, commodity, destination, forecast, risk, direction, note, vessel, turnaround, pct_move):

@@ -465,7 +465,7 @@ class ModelBundle:
             limit = None
             if float(entry.get("typical_dwt", 0) or 0) < float(req.cargo_weight_tons):
                 kind = "cargo"
-                item["rejection_reason"] = build_rejection_reason( kind=kind, cargo=req.cargo_weight_tons,
+                item["rejection_reason"] = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), cargo=req.cargo_weight_tons,
                     dwt=float(entry.get("typical_dwt", 0) or 0)
                 )
             else:
@@ -499,7 +499,7 @@ class ModelBundle:
                     elif "no infrastructure data" in low:
                         kind = "unknown"
                     break
-                item["rejection_reason"] = build_rejection_reason( kind=kind, port=port_name, value=value, limit=limit
+                item["rejection_reason"] = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), port=port_name, value=value, limit=limit
                 )
             rejected_reasons.append(item)
 
