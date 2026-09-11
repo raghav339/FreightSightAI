@@ -8,7 +8,7 @@ const DESTINATIONS=["Paradip","Visakhapatnam","Gangavaram","Gopalpur","Dhamra","
 export default function COAOptimizer(){
   const [form,setForm]=useState({
     commodity:"Coal",origin_port:"Newcastle",destination_port:"Paradip",
-    shipment_date:new Date().toISOString().slice(0,10),cargo_weight_tons:50000,
+    shipment_date:new Date().toISOString().slice(0,10),cargo_weight_tons:"",
     total_program_tons:300000,contract_duration_months:6,current_spot_rate_usd_per_ton:""
   });
   const [result,setResult]=useState(null); const [loading,setLoading]=useState(false); const [error,setError]=useState("");
@@ -17,9 +17,15 @@ export default function COAOptimizer(){
   async function run(e){
     e.preventDefault(); setLoading(true); setError(""); setResult(null);
     try{
-      const payload={...form,cargo_weight_tons:Number(form.cargo_weight_tons),
+      const payload={...form,
         total_program_tons:Number(form.total_program_tons),
         contract_duration_months:Number(form.contract_duration_months)};
+      // cargo_weight_tons is optional: when left blank, the optimizer picks
+      // its own per-voyage lift size per vessel class from total_program_tons.
+      // When set, it's used as the fixed intended lift size that drives the
+      // voyage count directly.
+      if(form.cargo_weight_tons!=="" && form.cargo_weight_tons!=null) payload.cargo_weight_tons=Number(form.cargo_weight_tons);
+      else delete payload.cargo_weight_tons;
       if(form.current_spot_rate_usd_per_ton) payload.current_spot_rate_usd_per_ton=Number(form.current_spot_rate_usd_per_ton);
       else delete payload.current_spot_rate_usd_per_ton;
       const {data}=await api.post("/coa-optimize",payload,{timeout:60000}); setResult(data);
@@ -37,21 +43,24 @@ export default function COAOptimizer(){
         ["Origin","origin_port",ORIGINS],["Destination","destination_port",DESTINATIONS]
       ].map(([label,key,opts])=><label key={key} className="text-sm text-slate-300">{label}<select value={form[key]} onChange={e=>set(key,e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2">{opts.map(x=><option key={x}>{x}</option>)}</select></label>)}
       <label className="text-sm text-slate-300">Shipment date<input type="date" value={form.shipment_date} onChange={e=>set("shipment_date",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
-      <label className="text-sm text-slate-300">Cargo / voyage (t)<input type="number" min="1" value={form.cargo_weight_tons} onChange={e=>set("cargo_weight_tons",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
+      <label className="text-sm text-slate-300">Cargo / voyage (t)<span className="ml-1 text-slate-500">optional</span><input type="number" min="1" placeholder="Auto-sized per vessel class" value={form.cargo_weight_tons} onChange={e=>set("cargo_weight_tons",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
       <label className="text-sm text-slate-300">Total COA tons<input type="number" min="1" value={form.total_program_tons} onChange={e=>set("total_program_tons",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
       <label className="text-sm text-slate-300">Contract months<input type="number" min="1" max="36" value={form.contract_duration_months} onChange={e=>set("contract_duration_months",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
       <label className="text-sm text-slate-300">Current spot rate ($/t, optional)<input type="number" min="0.01" step="0.01" value={form.current_spot_rate_usd_per_ton} onChange={e=>set("current_spot_rate_usd_per_ton",e.target.value)} placeholder="Required for $ savings" className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
       <div className="flex items-end"><Button disabled={loading} type="submit">{loading?"Optimizing…":"Optimize COA"}</Button></div>
     </form>
     {error&&(()=>{
-      const NO_VESSEL_PREFIX="No vessel class is feasible at both origin and destination ports for the COA program.";
-      const isNoVessel=error.startsWith(NO_VESSEL_PREFIX);
-      if(!isNoVessel){
+      const NO_VESSEL_PREFIXES=[
+        "No vessel class is feasible at both origin and destination ports for the COA program.",
+        "No vessel class can carry the requested cargo/voyage at both origin and destination ports.",
+      ];
+      const matchedPrefix=NO_VESSEL_PREFIXES.find(p=>error.startsWith(p));
+      if(!matchedPrefix){
         return <div className="rounded-xl border border-port/30 bg-port/10 p-4 text-sm text-port">{error}</div>;
       }
       // Per-class reasons are appended after the summary sentence, separated
       // by " | ", each formatted as "VesselClass: reason".
-      const detail=error.slice(NO_VESSEL_PREFIX.length).trim();
+      const detail=error.slice(matchedPrefix.length).trim();
       const reasons=detail?detail.split(" | ").map(part=>{
         const sep=part.indexOf(": ");
         return sep===-1?{vessel:null,reason:part}:{vessel:part.slice(0,sep),reason:part.slice(sep+2)};
@@ -82,13 +91,18 @@ export default function COAOptimizer(){
         <div className="text-xs uppercase tracking-widest text-slate-500">Recommended strategy</div>
         <div className="mt-1 text-2xl font-semibold text-paper-50">{result.best_strategy.vessel_type} · {result.best_strategy.voyages} voyages</div>
         <div className="mt-2 grid gap-3 text-sm text-slate-300 sm:grid-cols-2 lg:grid-cols-4">
-          <span>Effective parcel: {result.best_strategy.effective_cargo_tons_per_voyage.toLocaleString()} t</span>
+          <span>Cargo/voyage: {result.best_strategy.average_parcel_tons.toLocaleString()} t{result.requested_cargo_weight_tons==null && " (auto-sized)"}</span>
+          <span>Vessel capacity: {result.best_strategy.effective_cargo_tons_per_voyage.toLocaleString()} t</span>
           <span>Cycle: {result.best_strategy.estimated_cycle_days} days</span>
           <span>Schedule: {result.best_strategy.required_schedule_days} / {result.best_strategy.contract_duration_days} days</span>
           <span>{result.best_strategy.contract_rate_usd_per_ton!=null?`Indicative COA rate: $${result.best_strategy.contract_rate_usd_per_ton}/t`:"No spot calibration supplied"}</span>
         </div>
         <div className="mt-4 rounded-xl border border-hull-600/60 bg-hull-900/40 p-3 text-xs leading-relaxed text-slate-400">
-          <span className={result.status === "optimized" ? "text-starboard font-semibold" : "text-amber-300 font-semibold"}>{result.status === "optimized" ? "Schedule feasible" : "Schedule infeasible"}</span> · {result.recommendation_note}
+          <div className="mb-1.5 text-slate-500">
+            {result.requested_cargo_weight_tons!=null
+              ? `Cargo/voyage was fixed at ${result.requested_cargo_weight_tons.toLocaleString()} t — voyage count is derived from that, and only vessel classes able to carry it are shown.`
+              : "Cargo/voyage wasn't specified — each vessel class was sized to its own optimal parcel from the total program tonnage."}
+          </div>          <span className={result.status === "optimized" ? "text-starboard font-semibold" : "text-amber-300 font-semibold"}>{result.status === "optimized" ? "Schedule feasible" : "Schedule infeasible"}</span> · {result.recommendation_note}
         </div>
         {result.current_spot_rate_usd_per_ton == null && (
           <div className="mt-3 text-xs text-slate-500">No current spot benchmark was supplied, so no dollar savings are claimed. Enter a broker/market benchmark to compare program cost against spot.</div>

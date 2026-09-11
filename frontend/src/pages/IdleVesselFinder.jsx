@@ -135,7 +135,17 @@ export default function IdleVesselFinder() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {aisVessels.vessels.map((vessel) => (
+                  {aisVessels.vessels.map((vessel) => {
+                    // "Current port" (the field this button fills in) is only
+                    // ever a discharge-side port (meta.destinations) — that's
+                    // what /idle-alternatives expects to search *from*. AIS
+                    // nearest-port lookups cover every tracked port, including
+                    // loading-side origins (Newcastle, Baltimore, etc.), which
+                    // aren't valid values for that field. Filling it in with
+                    // one silently didn't match any <option>, so the dropdown
+                    // looked untouched and the button appeared broken.
+                    const canReposition = !!vessel.nearest_port && meta.destinations.includes(vessel.nearest_port);
+                    return (
                     <div key={vessel.mmsi} className="rounded-xl border border-hull-600/60 bg-hull-900/50 p-4">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="min-w-0">
@@ -158,18 +168,30 @@ export default function IdleVesselFinder() {
                             <div>Port distance</div>
                             <div className="mt-1 font-mono text-sm text-paper-50">{vessel.distance_to_port_nm ?? "—"} nm</div>
                           </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => {
-                              update("current_port", vessel.nearest_port || "");
-                              setResult(null);
-                              window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-                            }}
-                            disabled={!vessel.nearest_port}
-                          >
-                            Reposition this vessel
-                          </Button>
+                          <div className="flex flex-col items-end gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                update("current_port", vessel.nearest_port || "");
+                                setResult(null);
+                                window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+                              }}
+                              disabled={!canReposition}
+                              title={
+                                vessel.nearest_port && !canReposition
+                                  ? `${vessel.nearest_port} is a loading port, not a discharge port — this tool only searches for a next loading port for a vessel idling after discharge.`
+                                  : undefined
+                              }
+                            >
+                              Reposition this vessel
+                            </Button>
+                            {vessel.nearest_port && !canReposition && (
+                              <span className="max-w-[220px] text-right text-[11px] leading-snug text-slate-600">
+                                {"Idling near a loading port — reposition search doesn't apply here."}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <div className="mt-3 rounded-lg border border-hull-600/40 bg-hull-950/50 p-3">
@@ -180,7 +202,7 @@ export default function IdleVesselFinder() {
                       </div>
                       <div className="mt-3 text-[11px] leading-relaxed text-slate-600">AIS idle detection does not assert commercial charter availability. Confirm fixture status independently before chartering.</div>
                     </div>
-                  ))}
+                  );})}
                 </div>
               )}
             </>

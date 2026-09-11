@@ -223,8 +223,35 @@ class ModelBundle:
                 base = "low"
         return base
 
-    def predict(self, req):
-        X,feature_values,data_source_level,lookup=self._feature_row(req)
+    def _core_forecast(self, destination_port, commodity, shipment_date):
+        """Destination+commodity+date-only slice of the forecast pipeline.
+
+        PERF: everything computed here (feature row, BDRY-proxy forecast,
+        the H+1..H+N forecast curve, and the risk classification) depends
+        only on (destination_port, commodity, shipment_date) — NOT on
+        origin_port. Before this was split out, compare_origins() called
+        predict() once per origin (11 today), and predict() recomputed all
+        of this identically every time: the forecast curve alone runs every
+        individual tree of every horizon model against the same input row
+        (see _forecast_curve), so that was ~11x the RandomForest inference
+        work for a value that never changed across the loop. Profiling one
+        compare-origins request showed ~3.6s dominated almost entirely by
+        this redundant model inference. Hoisting it into a single call that
+        compare_origins() computes once and shares across all origins (see
+        predict()'s `core` parameter) removes that duplication without
+        changing what any single predict() call returns.
+        """
+        lookup, data_source_level = self._resolve_lookup(destination_port, commodity)
+        values = {k: lookup[k] for k in self.meta["numeric_features"]}
+        values["month_num"] = shipment_date.month
+        values["quarter"] = (shipment_date.month - 1) // 3 + 1
+        values["trade_signal_lag1"] = float(lookup.get("trade_signal_lag1", 0.0))
+        values["trade_signal_yoy_growth"] = float(lookup.get("trade_signal_yoy_growth", 0.0))
+        values["has_trade_signal"] = float(lookup.get("has_trade_signal", 0.0))
+        cat = self.encoder.transform(pd.DataFrame([[destination_port, commodity]], columns=self.meta["categorical_features"]))
+        num = np.array([[values[n] for n in self.meta["numeric_features"]]], dtype=float)
+        X = np.concatenate([num, cat], axis=1)
+
         # (See train.py "target_transform" comment / metadata.json
         # target_transform for the full rationale.) The model was trained
         # to predict the CHANGE in BDRY relative to the most recently known
@@ -234,19 +261,56 @@ class ModelBundle:
         # a trending series. Reconstruct the level the same way training's
         # evaluation did, so every downstream field below stays in the same
         # USD-rate units the frontend/PDF/history already expect.
-        prev=float(lookup["bdry_lag1"])
-        predicted_delta=float(self.reg.predict(X)[0])
-        forecast=prev+predicted_delta
-        forecast_curve=self._forecast_curve(X, prev, req.shipment_date, data_source_level)
-        data_confidence=self._data_confidence(data_source_level, forecast_curve)
-        # This pipeline's only rate signal is BDRY (a global dry-bulk
-        # market index), not a per-route freight observation — see
-        # ml-service/data/README and metadata.json target_transform.
-        # Stated plainly rather than left for the UI/PDF to guess at.
-        forecast_type="market_proxy"
-        forecast_basis="BDRY market proxy"
-        forecast_source="BDRY historical market series; AIS/PortWatch operational features"
-        training_data_mode=self.meta.get("data_source_mode", "unknown")
+        prev = float(lookup["bdry_lag1"])
+        predicted_delta = float(self.reg.predict(X)[0])
+        forecast = prev + predicted_delta
+        forecast_curve = self._forecast_curve(X, prev, shipment_date, data_source_level)
+        data_confidence = self._data_confidence(data_source_level, forecast_curve)
+
+        probs = self.clf.predict_proba(X)[0]
+        idx = int(np.argmax(probs))
+        predicted_class = int(self.clf.classes_[idx])
+        risk_classes = {0: "low", 1: "medium", 2: "high"}
+        risk = risk_classes[predicted_class]
+        confidence = float(probs[idx])
+
+        dest_port_info = port_utils.get_port(destination_port)
+        port_depth = None
+        if dest_port_info:
+            port_depth = (
+                dest_port_info.get("cargo_depth_m")
+                or dest_port_info.get("channel_depth_m")
+                or dest_port_info.get("max_draft_m")
+            )
+
+        return {
+            "X": X, "feature_values": values, "data_source_level": data_source_level, "lookup": lookup,
+            "prev": prev, "forecast": forecast, "forecast_curve": forecast_curve, "data_confidence": data_confidence,
+            # This pipeline's only rate signal is BDRY (a global dry-bulk
+            # market index), not a per-route freight observation — see
+            # ml-service/data/README and metadata.json target_transform.
+            # Stated plainly rather than left for the UI/PDF to guess at.
+            "forecast_type": "market_proxy",
+            "forecast_basis": "BDRY market proxy",
+            "forecast_source": "BDRY historical market series; AIS/PortWatch operational features",
+            "training_data_mode": self.meta.get("data_source_mode", "unknown"),
+            "risk": risk, "confidence": confidence,
+            "dest_port_info": dest_port_info, "port_depth": port_depth,
+        }
+
+    def predict(self, req, core=None):
+        # `core` lets a caller that already computed the destination+
+        # commodity+date-only part (see _core_forecast) share it instead of
+        # having predict() redo that work — used by compare_origins() to
+        # avoid recomputing the same model inference once per origin.
+        if core is None:
+            core = self._core_forecast(req.destination_port, req.commodity, req.shipment_date)
+        X = core["X"]; feature_values = core["feature_values"]; data_source_level = core["data_source_level"]; lookup = core["lookup"]
+        prev = core["prev"]; forecast = core["forecast"]; forecast_curve = core["forecast_curve"]; data_confidence = core["data_confidence"]
+        forecast_type = core["forecast_type"]; forecast_basis = core["forecast_basis"]; forecast_source = core["forecast_source"]
+        training_data_mode = core["training_data_mode"]
+        risk = core["risk"]; confidence = core["confidence"]
+        dest_port_info = core["dest_port_info"]; port_depth = core["port_depth"]
         route_freight_result = None
         if self.route_freight is not None:
             route_freight_result = self.route_freight.predict(
@@ -296,21 +360,10 @@ class ModelBundle:
             ]
             data_source_level = "synthetic_route" if forecast_type == "synthetic_route" else "route_specific"
             data_confidence = "low" if forecast_type == "synthetic_route" else route_freight_result.get("data_confidence", "medium")
-        probs = self.clf.predict_proba(X)[0]
+        # risk/confidence come from `core` above — the BDRY-based risk
+        # classifier runs on the same X regardless of the route-freight
+        # override, so it's computed once in _core_forecast, not per call.
 
-        idx = int(np.argmax(probs))
-
-        predicted_class = int(self.clf.classes_[idx])
-
-        risk_classes = {
-            0: "low",
-            1: "medium",
-            2: "high",
-        }
-
-        risk = risk_classes[predicted_class]
-        confidence = float(probs[idx])
-        
         # Reuse the SAME resolved lookup (and its data_source_level) that
         # built the feature row above, instead of re-querying independently.
         # Previously this line had its own fallback — `next(iter(...))` —
@@ -321,15 +374,8 @@ class ModelBundle:
         # disagree about which data they're using.
         pct=(forecast-prev)/prev if prev else 0
 
-        # Destination port's usable depth (prefer cargo pier depth, fall back to channel depth).
-        dest_port_info = port_utils.get_port(req.destination_port)
-        port_depth = None
-        if dest_port_info:
-            port_depth = (
-                dest_port_info.get("cargo_depth_m")
-                or dest_port_info.get("channel_depth_m")
-                or dest_port_info.get("max_draft_m")
-            )
+        # dest_port_info/port_depth come from `core` above (destination-only,
+        # unaffected by origin) — see _core_forecast.
         # Phase 6: origin port must be checked with the SAME constraint
         # engine as the destination — previously only the destination was
         # validated, so a vessel could be "recommended" that couldn't
@@ -504,15 +550,25 @@ class ModelBundle:
         past the backend's per-request timeout even when ml-service is
         fully warm, which then LOOKS like a cold start (the backend retries
         and the frontend shows the generic "waking up" banner) when the
-        real cost is this fan-out. Fixed two ways:
+        real cost is this fan-out. Fixed three ways:
           1. The destination's AIS stats don't change per origin — fetch
              them once, not N times.
           2. Each origin's (predict + AIS-lookup) work is independent, so
              run the origins concurrently instead of one at a time.
+          3. The model inference itself (forecast, forecast curve, risk
+             classification) depends only on destination+commodity+date —
+             never on origin — so it's computed ONCE via _core_forecast()
+             and shared across every origin's predict() call, instead of
+             re-running the full RandomForest ensemble (including the
+             per-tree forecast-curve loop) 11 times over for an identical
+             result. Profiling showed this redundant inference was the
+             actual bottleneck, not the sqlite/AIS I/O concurrency (2)
+             already addressed — see _core_forecast()'s docstring.
         """
         from app.schemas import ForecastRequest
         import concurrent.futures
         origins = self.meta.get("origins", [])
+        core = self._core_forecast(req.destination_port, req.commodity, req.shipment_date)
 
         # NOTE: the old code also fetched AIS stats for req.destination_port
         # on every single origin iteration via route_features(), even
@@ -538,7 +594,7 @@ class ModelBundle:
                     # per-origin comparison summary came back in English
                     # regardless of the caller context.
                 )
-                pred = self.predict(single)
+                pred = self.predict(single, core=core)
             except Exception as exc:
                 return ("error", {"origin_port": origin, "error": str(exc)})
 

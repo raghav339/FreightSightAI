@@ -302,7 +302,11 @@ router.post("/coa-optimize", decisionLimiter, optionalAuth, async (req, res) => 
             shipment_date: req.body.shipment_date,
             current_spot_rate_usd_per_ton: req.body.current_spot_rate_usd_per_ton
               ? Number(req.body.current_spot_rate_usd_per_ton) : undefined,
-            cargo_weight_tons: Number(req.body.cargo_weight_tons),
+            // Optional: when omitted, the optimizer picks its own per-voyage
+            // lift size per vessel class from total_program_tons instead of
+            // treating this as a fixed intended lift.
+            cargo_weight_tons: req.body.cargo_weight_tons != null && req.body.cargo_weight_tons !== ""
+              ? Number(req.body.cargo_weight_tons) : undefined,
             total_program_tons: req.body.total_program_tons
               ? Number(req.body.total_program_tons) : undefined,
             contract_duration_months: req.body.contract_duration_months

@@ -192,19 +192,27 @@ class RouteForecastRequest(BaseModel):
 
 
 class COAOptimizeRequest(RouteForecastRequest):
-    cargo_weight_tons: float = Field(gt=0)
+    # Optional: when supplied, this is treated as the FIXED intended lift
+    # size per voyage and drives the voyage count directly (see
+    # coa_optimizer.optimize()). When omitted, the optimizer picks its own
+    # voyage count/parcel size per vessel class from total_program_tons.
+    cargo_weight_tons: Optional[float] = Field(default=None, gt=0)
     total_program_tons: Optional[float] = Field(default=None, gt=0)
     contract_duration_months: float = Field(default=3, gt=0, le=36)
 
     @model_validator(mode="after")
     def _check_program_tonnage(self):
-        # Same rule as ForecastRequest: total_program_tons is the sum
-        # across all voyages in the COA, so it can never be less than a
-        # single voyage's cargo weight — otherwise the optimizer would be
-        # working from contradictory inputs (e.g. 50,000t per voyage
-        # against a 10,000t total program).
+        if self.cargo_weight_tons is None and self.total_program_tons is None:
+            raise ValueError(
+                "Provide total_program_tons (cargo_weight_tons per voyage is optional)."
+            )
+        # total_program_tons is the sum across all voyages in the COA, so it
+        # can never be less than a single voyage's cargo weight — otherwise
+        # the optimizer would be working from contradictory inputs (e.g.
+        # 90,000t per voyage against a 10,000t total program).
         if (
             self.total_program_tons is not None
+            and self.cargo_weight_tons is not None
             and self.total_program_tons < self.cargo_weight_tons
         ):
             raise ValueError(

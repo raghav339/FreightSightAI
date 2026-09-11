@@ -254,6 +254,11 @@ export default function ResultCards({ result }) {
               {"Vessel feasibility status"}: <span className="font-mono text-slate-400">{result.vessel_status === "RECOMMENDED_VESSEL" ? "Recommended vessel" : result.vessel_status === "REQUESTED_VESSEL_FEASIBLE" ? "Requested vessel feasible" : result.vessel_status === "REQUESTED_VESSEL_NOT_FEASIBLE_USING_RECOMMENDED" ? "Requested vessel not feasible — using recommended vessel" : result.vessel_status === "NO_FEASIBLE_VESSEL" ? "No feasible vessel" : result.vessel_status}</span>
             </div>
           )}
+          {result.vessel_status !== "NO_FEASIBLE_VESSEL" && result.vessel_suggestion && (
+            <div className="text-sm text-slate-300">
+              {"Recommended vessel"}: <span className="font-display font-semibold text-paper-50">{result.vessel_suggestion}</span>
+            </div>
+          )}
           {result.vessel_status === "NO_FEASIBLE_VESSEL" ? (
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm leading-relaxed text-amber-200">
               {result.vessel_rejection_reason || "No vessel class in the dataset is feasible for this cargo at both ports."}{" "}
@@ -265,11 +270,6 @@ export default function ResultCards({ result }) {
                 <span className="font-semibold text-signal">{"Why this vessel"}:</span> {result.recommended_vessel_reason}
               </div>
             )
-          )}
-          {result.port_data_warning && (
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
-              {result.port_data_warning}
-            </div>
           )}
           {result.rejected_vessel_types?.length > 0 && (
             <div className="flex flex-col gap-1.5">
