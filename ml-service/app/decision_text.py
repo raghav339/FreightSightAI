@@ -71,7 +71,16 @@ TEXT = {'rise': 'rise',
  'timing_up': 'Freight rates are trending up, so consider chartering sooner rather than later.',
  'timing_down': 'Freight rates are trending down, so there may be room to wait before chartering.',
  'timing_flat': 'Freight rates look stable.',
- 'draft_exceeds_max': 'A typical draft of {draft:.1f} m exceeds the maximum permitted draft of {max_draft:.1f} m.'}
+ 'draft_exceeds_max': 'A typical draft of {draft:.1f} m exceeds the maximum permitted draft of {max_draft:.1f} m.',
+ 'delay_note': ' An additional {delay:g} day(s) of expected delay flagged on this request has been folded into the turnaround estimate above.',
+ 'transit_provided': 'Using the supplied distance of {distance_km:,.0f} km, estimated sea transit from {origin} to {destination} is about {days} days at a typical {speed:.1f}-knot laden bulk-carrier service speed.',
+ 'transit_table': 'Estimated sea transit from {origin} to {destination} is about {days} days, based on an indicative route-distance table (no distance was supplied on the request).',
+ 'transit_unavailable': 'No distance was supplied, and this origin-destination pair is not in the indicative route-distance table, so a transit-time estimate is not available.',
+ 'stowage_light': 'At {factor:.2f} m3/t, this cargo is relatively light/bulky for its weight (typical dry-bulk cargoes run roughly 0.4-1.6 m3/t) — cubic capacity, not deadweight, may end up being the binding constraint on vessel choice; confirm against the specific vessel class grain/bale capacity.',
+ 'stowage_dense': 'At {factor:.2f} m3/t, this cargo is relatively dense for its weight (typical dry-bulk cargoes run roughly 0.4-1.6 m3/t) — deadweight is very likely the binding constraint, consistent with the DWT-based vessel check above.',
+ 'stowage_typical': 'At {factor:.2f} m3/t, the implied stowage factor is within the typical dry-bulk range (roughly 0.4-1.6 m3/t); deadweight is the expected binding constraint, consistent with the vessel check above.',
+ 'mode_charter': 'Shipment mode is set to Charter — the figures above are framed as a chartering/COA decision (vessel hire under a charter party) rather than a one-off freight booking; the per-ton rate remains the reference point since this pipeline does not model daily hire-rate equivalents.',
+ 'mode_spot': 'Shipment mode is set to Bulk Carrier (spot voyage) — the figures above are framed as a single voyage-charter booking at the quoted per-ton rate.'}
 
 REJECTION_TEXT = {'cargo': "Cargo of {cargo:,.0f} t exceeds {vessel}'s typical DWT capacity of {dwt:,.0f} t.",
  'loa': '{port} LOA limit: {vessel} LOA ({value:.0f} m) exceeds the port maximum ({limit:.0f} m).',
@@ -92,7 +101,33 @@ def build_rejection_reason(*, kind, vessel=None, port=None, value=None, limit=No
     return REJECTION_TEXT["generic"].format(vessel=vessel)
 
 
-def build_prediction_text(*, commodity, destination, forecast, risk, direction, note, vessel, turnaround, pct_move):
+def build_delay_note(*, delay_days):
+    if not delay_days or delay_days <= 0:
+        return ""
+    return TEXT["delay_note"].format(delay=delay_days)
+
+
+def build_transit_note(*, origin, destination, transit_days, source, distance_km=None, speed_knots=None):
+    if source == "user_provided":
+        return TEXT["transit_provided"].format(distance_km=distance_km, origin=origin, destination=destination, days=transit_days, speed=speed_knots)
+    if source == "route_table":
+        return TEXT["transit_table"].format(origin=origin, destination=destination, days=transit_days)
+    return TEXT["transit_unavailable"]
+
+
+def build_stowage_note(*, factor):
+    if factor < 0.6:
+        return TEXT["stowage_dense"].format(factor=factor)
+    if factor > 1.6:
+        return TEXT["stowage_light"].format(factor=factor)
+    return TEXT["stowage_typical"].format(factor=factor)
+
+
+def build_mode_note(*, mode):
+    return TEXT["mode_charter"] if str(mode).strip().lower() == "charter" else TEXT["mode_spot"]
+
+
+def build_prediction_text(*, commodity, destination, forecast, risk, direction, note, vessel, turnaround, pct_move, delay_days=0):
     risk_text = TEXT["risk"].format(risk=TEXT.get(f"risk_{risk}", risk))
     if pct_move > 0.03:
         window = TEXT["window_up"]
@@ -109,6 +144,7 @@ def build_prediction_text(*, commodity, destination, forecast, risk, direction, 
         idle = TEXT["idle_slow"].format(days=turnaround)
     else:
         idle = TEXT["idle_ok"]
+    idle = idle + build_delay_note(delay_days=delay_days)
     return summary, window, TEXT["vessel"].format(vessel=vessel, note=note), idle
 
 

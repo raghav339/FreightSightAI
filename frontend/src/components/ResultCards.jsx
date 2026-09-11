@@ -1,7 +1,7 @@
 // frontend/src/components/ResultCards.jsx
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Gauge, ShieldAlert, ShipWheel, CalendarClock, Sparkles, Anchor, TimerReset, RadioTower, FileSignature, Map as MapIcon, BrainCircuit, Download } from "lucide-react";
+import { Gauge, ShieldAlert, ShipWheel, CalendarClock, Sparkles, Anchor, TimerReset, RadioTower, FileSignature, Map as MapIcon, BrainCircuit, Download, Route } from "lucide-react";
 import { Card, CardContent } from "./ui/card.jsx";
 import { Badge } from "./ui/badge.jsx";
 import { Button } from "./ui/button.jsx";
@@ -302,6 +302,18 @@ export default function ResultCards({ result }) {
           sub={result.port_turnaround_days != null ? `est. turnaround ~${result.port_turnaround_days} days` : null}
         >
           <p className="text-sm leading-relaxed text-slate-300">{result.idle_management_advice}</p>
+        </WideCard>
+      )}
+
+      {(result.transit_note || result.stowage_note) && (
+        <WideCard
+          icon={Route}
+          iconClass="text-starboard"
+          label={"Transit & stowage"}
+          sub={result.estimated_transit_days != null ? `~${result.estimated_transit_days} day transit` : null}
+        >
+          {result.transit_note && <p className="text-sm leading-relaxed text-slate-300">{result.transit_note}</p>}
+          {result.stowage_note && <p className="text-sm leading-relaxed text-slate-300">{result.stowage_note}</p>}
         </WideCard>
       )}
 

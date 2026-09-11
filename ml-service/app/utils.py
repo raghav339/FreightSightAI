@@ -29,6 +29,9 @@ from app.decision_text import (
     build_loa_check_item,
     build_port_data_warning,
     build_rejection_reason,
+    build_transit_note,
+    build_stowage_note,
+    build_mode_note,
 )
 
 MODELS_DIR = Path(__file__).resolve().parent / ".." / "models"
@@ -503,8 +506,31 @@ class ModelBundle:
                 )
             rejected_reasons.append(item)
 
-        turnaround=port_utils.port_turnaround_days(req.destination_port,req.cargo_weight_tons)
+        turnaround=port_utils.port_turnaround_days(req.destination_port,req.cargo_weight_tons,delay_days=req.delay_days or 0)
         congestion=port_utils.congestion_warning(req.origin_port,req.destination_port)
+
+        # Sea-transit estimate: prefers the request's distance_km (a real,
+        # request-specific input the static table can't know) over the
+        # indicative origin/destination distance table.
+        transit_days = port_utils.estimate_transit_days(
+            req.origin_port, req.destination_port, distance_km_override=req.distance_km
+        )
+        transit_source = (
+            "user_provided" if (req.distance_km and req.distance_km > 0)
+            else ("route_table" if transit_days is not None else "unavailable")
+        )
+        transit_note = build_transit_note(
+            origin=req.origin_port, destination=req.destination_port,
+            transit_days=transit_days, source=transit_source,
+            distance_km=req.distance_km, speed_knots=port_utils.DEFAULT_SERVICE_SPEED_KNOTS,
+        )
+
+        # Stowage-factor sanity check: only meaningful when a cargo volume
+        # was actually supplied. Flags whether cubic capacity or deadweight
+        # is the more likely binding constraint on vessel choice.
+        stowage_factor_value = port_utils.stowage_factor(req.cargo_weight_tons, req.cargo_volume_cbm)
+        stowage_note = build_stowage_note(factor=stowage_factor_value) if stowage_factor_value is not None else None
+
         direction_key="rise" if pct>0.03 else "fall" if pct<-0.03 else "flat"
         # Keep the technical port feasibility note in English only when it is
         # supplied by the static port database; the decision guidance itself
@@ -513,10 +539,14 @@ class ModelBundle:
             commodity=req.commodity, destination=req.destination_port,
             forecast=forecast, risk=risk, direction=direction_key, note=note,
             vessel=vessel, turnaround=turnaround, pct_move=pct,
+            delay_days=req.delay_days or 0,
         )
         duration_note = f" over {req.contract_duration_months:.0f} months" if req.contract_duration_months else ""
         strategy=build_contract_text( pct_move=pct, risk=risk, duration_note=duration_note,
                                    total_program_tons=req.total_program_tons, cargo_weight_tons=req.cargo_weight_tons)
+        # Shipment-mode framing (spot voyage vs. charter/COA) — genuinely
+        # changes how the strategy text is presented, not just stored.
+        strategy = strategy + " " + build_mode_note(mode=req.shipment_mode)
         trend=(
             [{"label":"route lag 3m","value":round(float(route_freight_result["forecasts"][0]["predicted_rate_usd_per_ton"]),2)},
              {"label":"route last available","value":round(prev,2)},
@@ -533,7 +563,12 @@ class ModelBundle:
         "latest_feature_date":self.meta.get("training_run",{}).get("training_period",{}).get("end") or self.meta.get("training_run",{}).get("test_period",{}).get("end"),
         "risk_reliability":"low for high-risk class; medium overall" if self.meta.get("metrics",{}).get("risk_walk_forward_cv",{}).get("status") == "ok" else "medium",
         "recommended_vessel_reason":recommended_vessel_reason,
-        "port_data_warning": build_port_data_warning() if (origin_port_info or {}).get("data_status") or (dest_port_info or {}).get("data_status") else None}
+        "port_data_warning": build_port_data_warning() if (origin_port_info or {}).get("data_status") or (dest_port_info or {}).get("data_status") else None,
+        "estimated_transit_days": transit_days,
+        "transit_distance_source": transit_source,
+        "transit_note": transit_note,
+        "stowage_factor_cbm_per_ton": stowage_factor_value,
+        "stowage_note": stowage_note}
 
     def compare_origins(self, req):
         """(2) Rank every known loading port for the same cargo/destination/

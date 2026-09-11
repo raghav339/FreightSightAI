@@ -246,6 +246,17 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
     recommended_vessel_reason: mlResult.recommended_vessel_reason ?? null,
     port_data_warning: mlResult.port_data_warning ?? null,
 
+    // cargo_volume_cbm / distance_km / delay_days / shipment_mode are now
+    // actually consumed by the decision engine (see ml-service/app/utils.py
+    // ModelBundle.predict) rather than being accepted-but-unused inputs.
+    // Not yet persisted to forecast_results — history/PDF exports won't
+    // show these until a follow-up migration adds the columns.
+    estimated_transit_days: mlResult.estimated_transit_days ?? null,
+    transit_distance_source: mlResult.transit_distance_source ?? null,
+    transit_note: mlResult.transit_note ?? null,
+    stowage_factor_cbm_per_ton: mlResult.stowage_factor_cbm_per_ton ?? null,
+    stowage_note: mlResult.stowage_note ?? null,
+
     // A PDF report is available for every forecast, signed in or not — see
     // routes/pdf.js, which now allows anonymous downloads of anonymous
     // (user_id IS NULL) forecast records.

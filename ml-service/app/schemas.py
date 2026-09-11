@@ -176,6 +176,17 @@ class ForecastResponse(BaseModel):
     recommended_vessel_reason: str = ""
     port_data_warning: Optional[str] = None
 
+    # Now genuinely driven by the request's distance_km / delay_days /
+    # cargo_volume_cbm / shipment_mode (see ModelBundle.predict in utils.py)
+    # rather than being accepted-but-unused fields. transit_distance_source
+    # is one of "user_provided" (distance_km was supplied), "route_table"
+    # (fell back to the indicative static distance table), or "unavailable".
+    estimated_transit_days: Optional[float] = None
+    transit_distance_source: str = "unavailable"
+    transit_note: Optional[str] = None
+    stowage_factor_cbm_per_ton: Optional[float] = None
+    stowage_note: Optional[str] = None
+
 
 class HealthResponse(BaseModel):
     status: str

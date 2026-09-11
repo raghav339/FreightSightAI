@@ -867,22 +867,47 @@ def get_distance_nm(origin: str, destination: str):
     return None
 
 
-def estimate_transit_days(origin: str, destination: str, speed_knots: float = DEFAULT_SERVICE_SPEED_KNOTS):
-    """Rough sea-transit time from the static distance table above."""
-    nm = get_distance_nm(origin, destination)
+def estimate_transit_days(origin: str, destination: str, speed_knots: float = DEFAULT_SERVICE_SPEED_KNOTS,
+                           distance_km_override: float | None = None):
+    """Rough sea-transit time. Prefers a user-supplied distance_km (converted
+    to nautical miles) when given — that's a real, request-specific input
+    the static origin/destination table can't know about (actual routing,
+    canal transit, weather diversions). Falls back to the indicative
+    APPROX_DISTANCE_NM table when no distance was supplied."""
+    if distance_km_override is not None and distance_km_override > 0:
+        nm = distance_km_override / 1.852
+    else:
+        nm = get_distance_nm(origin, destination)
     if nm is None:
         return None
     return round(nm / (speed_knots * 24), 1)
 
 
-def port_turnaround_days(port_name: str, cargo_weight_tons: float) -> float:
-    """Rough discharge/load turnaround estimate used for idle-time planning."""
+def port_turnaround_days(port_name: str, cargo_weight_tons: float, delay_days: float = 0.0) -> float:
+    """Rough discharge/load turnaround estimate used for idle-time planning.
+    delay_days (weather, congestion, documentation, etc., as flagged on the
+    request) is added directly — it's additional real time the vessel will
+    be occupied at or waiting on this port, not a separate consideration."""
     info = get_port(port_name)
     rate = info["cargo_handling_rate_tpd"] if info and info.get("cargo_handling_rate_tpd") else 8000
+    handling_days = cargo_weight_tons / rate
+    total_days = handling_days + max(float(delay_days or 0), 0.0)
     # Avoid rounding small but non-zero cargo turns (e.g. 1,000 t at a
     # 25,000 tpd terminal) down to 0.0 days, which falsely implies
     # instantaneous handling. Keep two decimal places for operational use.
-    return round(cargo_weight_tons / rate, 2)
+    return round(total_days, 2)
+
+
+def stowage_factor(cargo_weight_tons: float, cargo_volume_cbm: float | None) -> float | None:
+    """cbm per tonne implied by the request's cargo weight + volume. Not
+    matched against any specific vessel's grain/bale cubic capacity (that
+    data isn't in this project's vessel dataset) — this is a general
+    dry-bulk sanity check against the well-known ~0.4-1.6 m3/t industry
+    range, surfaced so the decision engine can flag when cubic capacity,
+    not deadweight, is likely to be the real constraint."""
+    if not cargo_volume_cbm or not cargo_weight_tons:
+        return None
+    return round(cargo_volume_cbm / cargo_weight_tons, 3)
 
 
 def congestion_warning(origin: str, destination: str) -> str:
