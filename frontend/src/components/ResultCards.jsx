@@ -170,10 +170,24 @@ export default function ResultCards({ result }) {
         <StatCard
           icon={ShipWheel}
           iconClass="text-starboard"
-          label={"Recommended vessel"}
-          sub={result.feasible_vessel_types?.length > 0 ? `${"Feasible"}: ${result.feasible_vessel_types.join(", ")}` : null}
+          label={result.vessel_status === "NO_FEASIBLE_VESSEL" ? "Vessel fit" : "Recommended vessel"}
+          sub={
+            result.vessel_status === "NO_FEASIBLE_VESSEL"
+              ? "No class fits both ports"
+              : result.feasible_vessel_types?.length > 0
+              ? `${"Feasible"}: ${result.feasible_vessel_types.join(", ")}`
+              : null
+          }
         >
-          <span className="font-display text-lg font-medium text-paper-50">{result.vessel_suggestion}</span>
+          <span
+            className={
+              result.vessel_status === "NO_FEASIBLE_VESSEL"
+                ? "font-display text-lg font-medium text-amber-300"
+                : "font-display text-lg font-medium text-paper-50"
+            }
+          >
+            {result.vessel_status === "NO_FEASIBLE_VESSEL" ? "None feasible" : result.vessel_suggestion}
+          </span>
         </StatCard>
 
         <StatCard icon={CalendarClock} iconClass="text-amber" label={"Charter window"}>
@@ -235,23 +249,22 @@ export default function ResultCards({ result }) {
               {"Vessel feasibility status"}: <span className="font-mono text-slate-400">{result.vessel_status === "RECOMMENDED_VESSEL" ? "Recommended vessel" : result.vessel_status === "REQUESTED_VESSEL_FEASIBLE" ? "Requested vessel feasible" : result.vessel_status === "REQUESTED_VESSEL_NOT_FEASIBLE_USING_RECOMMENDED" ? "Requested vessel not feasible — using recommended vessel" : result.vessel_status === "NO_FEASIBLE_VESSEL" ? "No feasible vessel" : result.vessel_status}</span>
             </div>
           )}
-          {result.vessel_constraint_note && (
-            <p className="text-sm leading-relaxed text-slate-300">{result.vessel_constraint_note}</p>
-          )}
-          {result.recommended_vessel_reason && (
-            <div className="rounded-lg border border-signal/20 bg-signal/5 p-3 text-xs leading-relaxed text-slate-300">
-              <span className="font-semibold text-signal">{"Why this vessel"}:</span> {result.recommended_vessel_reason}
+          {result.vessel_status === "NO_FEASIBLE_VESSEL" ? (
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm leading-relaxed text-amber-200">
+              {result.vessel_rejection_reason || "No vessel class in the dataset is feasible for this cargo at both ports."}{" "}
+              No vessel is actually recommended here — treat any vessel class shown elsewhere as an indicative capacity match only, not a fit-checked recommendation.
             </div>
+          ) : (
+            result.recommended_vessel_reason && (
+              <div className="rounded-lg border border-signal/20 bg-signal/5 p-3 text-xs leading-relaxed text-slate-300">
+                <span className="font-semibold text-signal">{"Why this vessel"}:</span> {result.recommended_vessel_reason}
+              </div>
+            )
           )}
           {result.port_data_warning && (
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-relaxed text-amber-200">
               {result.port_data_warning}
             </div>
-          )}
-          {result.vessel_status === "NO_FEASIBLE_VESSEL" && (
-            <p className="text-sm leading-relaxed text-amber-300">
-              {result.vessel_rejection_reason || "No vessel class in the dataset is feasible for this cargo at both ports."}
-            </p>
           )}
           {result.rejected_vessel_types?.length > 0 && (
             <div className="flex flex-col gap-1.5">
