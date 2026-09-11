@@ -48,7 +48,9 @@ export default function HistoryTable({ rows }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.result_id} className="border-b border-hull-600/50 transition-colors last:border-none hover:bg-signal/[0.04]">
-                <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-400">{r.shipment_date}</td>
+                <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-400">
+                  {new Date(r.shipment_date).toLocaleDateString("en-CA")}
+                </td>
                 <td className="whitespace-nowrap px-4 py-3 text-paper-100">{r.commodity}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-paper-100">{r.route}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-slate-400">{r.shipment_mode}</td>
