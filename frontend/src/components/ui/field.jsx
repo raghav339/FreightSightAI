@@ -1,4 +1,3 @@
-// frontend/src/components/ui/field.jsx
 import { cn } from "../../lib/utils.js";
 
 const controlClass =

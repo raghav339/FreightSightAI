@@ -383,27 +383,7 @@ def _load_vessel_dataset():
 
 VESSEL_SPECS = _load_vessel_dataset()
 
-# BUGFIX: check_vessel_port_compatibility() (and the rejection-value
-# builder in utils.py) judged a class's PORT FIT against
-# VESSEL_LIMIT_SPECS's hardcoded absolute-maximum dimensions (e.g. Panamax
-# up to 14.5 m draft, Handysize up to 190 m LOA) — the largest vessel that
-# could theoretically exist in that class. Meanwhile recommend_vessel()
-# and every "typical draft/length" string shown to the user quote the much
-# smaller dataset-derived MEDIAN for that class (e.g. Panamax 13.5 m,
-# Handysize 180 m). That mismatch meant the feasibility check was silently
-# stricter than the vessel it claimed to be describing, so real, everyday
-# ports failed the fit check for a class whose *typical* representative
-# would have fit comfortably (verified: at 50k+ t cargo this failed 85%+
-# of the origin/destination pairs in the app's own dropdowns, and 100% at
-# 90k+ t, since no listed port reaches Panamax/Capesize's class-ceiling
-# draft on both ends).
-#
-# Fix: overwrite the port-fit dimensions with the SAME typical (median)
-# length/beam/draft already computed in VESSEL_SPECS, so the feasibility
-# check and the "recommended vessel" explanation always describe the same
-# vessel. min_dwt/max_dwt (capacity banding) are untouched — they aren't
-# consumed by the port-fit check. Fall back to the original hardcoded
-# figure only if the dataset is missing a value for that class.
+
 for _row in VESSEL_SPECS.itertuples():
     _spec = VESSEL_LIMIT_SPECS.get(_row.vessel_class)
     if _spec is None:
@@ -726,16 +706,6 @@ def recommend_vessel(
     """
     cargo_tonnage = float(cargo_tonnage)
 
-    # BUGFIX: port_name was previously accepted but never used, so this
-    # function's own feasibility check silently skipped the LOA/beam
-    # constraints that vessel_fits_port() applies (falling back to a
-    # draft-only comparison). That made recommend_vessel()'s notion of
-    # "feasible" disagree with feasible_vessels(..., port_info=...) as
-    # called from predict() — e.g. it could recommend a vessel class as
-    # feasible while the separately-computed feasible_vessel_types list
-    # shown to the user was empty for the same request. Resolving
-    # port_name -> port_info here and threading it through makes both
-    # checks consistent.
     port_info = get_port(port_name) if port_name else None
     origin_port_info = get_port(origin_port_name) if origin_port_name else None
 
@@ -743,16 +713,12 @@ def recommend_vessel(
         cargo_tonnage
     )
 
-    # Phase 6: candidates are now feasible at BOTH origin and destination,
-    # not destination-only. rejected carries a rejection_reason per vessel.
     candidates, rejected = feasible_vessels_both_ports(
         cargo_tonnage,
         origin_port_info,
         port_info,
     )
-    # feasible_vessels_both_ports() doesn't know about the legacy
-    # optional `max_draft` override — apply it here for backward
-    # compatibility with any caller still passing it.
+
     if max_draft is not None:
         still_feasible = []
         for c in candidates:
@@ -780,8 +746,6 @@ def recommend_vessel(
     # to both-port-feasible by feasible_vessels_both_ports above).
     feasible = candidates
 
-    # Because VESSEL_SPECS is sorted smallest -> largest,
-    # the first feasible candidate is the smallest feasible class.
     best_feasible = (
         feasible[0]
         if feasible
@@ -833,13 +797,7 @@ def recommend_vessel(
     }
 
 
-# ----------------------------------------------------------------------
-# Approximate great-circle distances (nautical miles), loading port ->
-# East Coast India discharge port. These power (2) origin comparison and
-# (6) idle-vessel repositioning — indicative sea-transit estimates only,
-# not routed around real waypoints/canal transit, and NEVER fed into the
-# rate/risk ML models (those stay purely market-data driven).
-# ----------------------------------------------------------------------
+
 APPROX_DISTANCE_NM = {
     "Newcastle":  {"Paradip": 4550, "Visakhapatnam": 4400, "Gangavaram": 4380, "Gopalpur": 4470, "Dhamra": 4600, "Sagar Sandheads": 4750, "Haldia": 4780},
     "Gladstone":  {"Paradip": 4700, "Visakhapatnam": 4550, "Gangavaram": 4530, "Gopalpur": 4620, "Dhamra": 4750, "Sagar Sandheads": 4900, "Haldia": 4930},
@@ -892,9 +850,6 @@ def port_turnaround_days(port_name: str, cargo_weight_tons: float, delay_days: f
     rate = info["cargo_handling_rate_tpd"] if info and info.get("cargo_handling_rate_tpd") else 8000
     handling_days = cargo_weight_tons / rate
     total_days = handling_days + max(float(delay_days or 0), 0.0)
-    # Avoid rounding small but non-zero cargo turns (e.g. 1,000 t at a
-    # 25,000 tpd terminal) down to 0.0 days, which falsely implies
-    # instantaneous handling. Keep two decimal places for operational use.
     return round(total_days, 2)
 
 
@@ -950,10 +905,7 @@ def contracting_strategy(pct_move: float, risk_label: str, contract_duration_mon
                           total_program_tons: float | None, cargo_weight_tons: float) -> str:
     """Objective: shift from repeated single spot fixtures to short/mid-term
     multiple-voyage contracts (COA) where the data supports it."""
-    # Guard: a program's total tonnage is the sum across all voyages, so it
-    # can never be smaller than a single shipment's cargo weight. Treat an
-    # inconsistent value as "not provided" rather than emitting a nonsensical
-    # voyage count (e.g. a 1,000t lift against a 100t program).
+    
     if total_program_tons and cargo_weight_tons and total_program_tons < cargo_weight_tons:
         total_program_tons = None
 

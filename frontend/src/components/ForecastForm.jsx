@@ -1,4 +1,3 @@
-// frontend/src/components/ForecastForm.jsx
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2, AlertTriangle, RotateCw, Compass } from "lucide-react";
@@ -18,7 +17,6 @@ const EMPTY_FORM = {
   vessel_type: "",
   distance_km: "",
   delay_days: "",
-  // Objective: plan short/mid-term multi-voyage (COA) contracts, not just one-off spot fixtures
   contract_duration_months: "",
   total_program_tons: "",
 };

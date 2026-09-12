@@ -119,38 +119,14 @@ class ForecastResponse(BaseModel):
     # the whole lookup table). Never an arbitrary/unrelated entry.
     data_source_level: str = "destination_commodity"
 
-    # Phase 6 — both-port vessel feasibility. vessel_status is one of:
-    # "RECOMMENDED_VESSEL" (no vessel_type requested, this is the best
-    # feasible option), "REQUESTED_VESSEL_FEASIBLE" (the requested vessel_type
-    # passed both-port checks), "REQUESTED_VESSEL_NOT_FEASIBLE_USING_RECOMMENDED"
-    # (the requested vessel_type failed cargo/origin/destination checks, so a
-    # different feasible vessel is shown instead — see vessel_rejection_reason
-    # for why), or "NO_FEASIBLE_VESSEL" (no vessel class in the dataset is
-    # feasible for this cargo at both ports — recommended_vessel_type is then
-    # informational only, not an actual recommendation). The forecast/risk
-    # figures above are always valid regardless of vessel_status — a vessel
-    # problem never invalidates the rate forecast.
     vessel_status: str = "RECOMMENDED_VESSEL"
     vessel_rejection_reason: Optional[str] = None
     rejected_vessel_types: list[dict] = []
 
-    # (Phase 4) Genuine multi-horizon forecast — H+1/H+2/H+3, each from its
-    # own directly-trained model (see train.py), not the H+1 model re-run
-    # with a relabeled date. lower_bound/upper_bound come from the spread
-    # of individual tree predictions within that horizon's RandomForest
-    # (an ensemble-uncertainty estimate, not a fabricated interval).
+    
     forecast_curve: list[dict] = []
 
-    # (Phase 2/3) What is actually being predicted, stated plainly so the
-    # UI/PDF/judge never has to infer it:
-    #   "route_specific" — the model saw real per-route freight
-    #       observations for this exact lane, OR
-    #   "market_proxy" — BDRY (a global dry-bulk market index) stands in
-    #       for a route-specific rate because no per-route freight
-    #       observations exist in the training data. This project's
-    #       current dataset (see ml-service/data/README) is proxy-based;
-    #       forecast_type will read "market_proxy" until real per-route
-    #       freight-rate observations are added to training.
+   
     forecast_type: str = "market_proxy"
 
     # High/medium/low, derived from data_source_level + horizon (further
@@ -160,12 +136,6 @@ class ForecastResponse(BaseModel):
     # horizon-specific evaluation metrics stored in metadata.json.
     data_confidence: str = "medium"
 
-    # (Phase 10) Whether the currently-loaded model was trained on
-    # data/production/ (verified real datasets) or data/synthetic/
-    # (development/test data). Read straight from metadata.json's
-    # data_source_mode, written by train.py at training time — never
-    # inferred or guessed at inference time. "unknown" only if an older
-    # metadata.json predates this field.
     training_data_mode: str = "unknown"
 
     # Decision-quality transparency for mentor/demo and operational use.
@@ -203,10 +173,6 @@ class RouteForecastRequest(BaseModel):
 
 
 class COAOptimizeRequest(RouteForecastRequest):
-    # Optional: when supplied, this is treated as the FIXED intended lift
-    # size per voyage and drives the voyage count directly (see
-    # coa_optimizer.optimize()). When omitted, the optimizer picks its own
-    # voyage count/parcel size per vessel class from total_program_tons.
     cargo_weight_tons: Optional[float] = Field(default=None, gt=0)
     total_program_tons: Optional[float] = Field(default=None, gt=0)
     contract_duration_months: float = Field(default=3, gt=0, le=36)
@@ -217,10 +183,6 @@ class COAOptimizeRequest(RouteForecastRequest):
             raise ValueError(
                 "Provide total_program_tons (cargo_weight_tons per voyage is optional)."
             )
-        # total_program_tons is the sum across all voyages in the COA, so it
-        # can never be less than a single voyage's cargo weight — otherwise
-        # the optimizer would be working from contradictory inputs (e.g.
-        # 90,000t per voyage against a 10,000t total program).
         if (
             self.total_program_tons is not None
             and self.cargo_weight_tons is not None

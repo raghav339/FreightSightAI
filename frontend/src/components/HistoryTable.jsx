@@ -1,4 +1,3 @@
-// frontend/src/components/HistoryTable.jsx
 import { Inbox } from "lucide-react";
 import { Card } from "./ui/card.jsx";
 import { Badge } from "./ui/badge.jsx";

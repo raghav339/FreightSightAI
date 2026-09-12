@@ -1,4 +1,3 @@
-// frontend/src/components/WhatIfPanel.jsx
 // (5) Sensitivity / what-if panel — lets the user drag cargo weight and
 // contract duration around the values they just forecast with, and see how
 // the vessel recommendation, turnaround, idle-time advice, and contracting
@@ -16,16 +15,6 @@ const DEBOUNCE_MS = 350;
 export default function WhatIfPanel({ baseRequest }) {
   const baseCargo = Number(baseRequest?.cargo_weight_tons) || 50000;
   const baseDuration = Number(baseRequest?.contract_duration_months) || 6;
-
-  // BUGFIX: cargoMin used to be hard-floored at 1000 and the slider step
-  // was hard-coded at 1000, regardless of how small the actual cargo
-  // weight was. For a forecast under ~1000t that made cargoMin (1000)
-  // land ABOVE cargoMax (baseCargo * 1.8), collapsing the slider to a
-  // degenerate two-value range (1000/2000) that couldn't represent the
-  // real cargo value at all — the thumb rendered stuck at 1000 no matter
-  // how you dragged it. Scale the step to the cargo's own magnitude
-  // instead, and derive min/max from that step so the range always
-  // brackets baseCargo with usable granularity.
   const cargoStep = baseCargo < 1000 ? 10 : baseCargo < 10000 ? 100 : 1000;
   const cargoMinRaw = Math.max(cargoStep, baseCargo * 0.4);
   const cargoMin = Math.round(cargoMinRaw / cargoStep) * cargoStep;

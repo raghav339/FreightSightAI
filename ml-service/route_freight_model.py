@@ -179,11 +179,7 @@ def train(output_dir: str | Path | None = None, data_dir: str | Path | None = No
             model.fit(fit_train[NUMERIC + CATEGORICAL], fit_train["target"])
             pred = model.predict(fit_test[NUMERIC + CATEGORICAL])
             naive = fit_test["lag1"].to_numpy()
-            # (Task 4) Moving-average baseline, using the same trailing
-            # 3-month mean already computed as a model feature
-            # (rolling_mean_3) — this is exactly the "next value == trailing
-            # 3-month average" baseline, evaluated on the identical
-            # chronological test rows as the model and the naive baseline.
+            
             movavg = fit_test["rolling_mean_3"].to_numpy()
             mae = float(mean_absolute_error(fit_test["target"], pred))
             naive_mae = float(mean_absolute_error(fit_test["target"], naive))
@@ -226,10 +222,7 @@ def train(output_dir: str | Path | None = None, data_dir: str | Path | None = No
         if artifact:
             joblib.dump(artifact, out / f"route_freight_model_h{h}.joblib")
 
-    # (Task 4) Prominent, impossible-to-miss console summary of every
-    # route+horizon model's baseline comparison — printed every time
-    # train() runs, not just when something happens to fail, so a passing
-    # run and a regression look equally visible.
+    
     total = sum(len(h_metrics) for h_metrics in metrics.values())
     failing = [
         (key, h) for key, h_metrics in metrics.items()
@@ -278,9 +271,7 @@ def train(output_dir: str | Path | None = None, data_dir: str | Path | None = No
         "minimum_observations_per_route": MIN_OBSERVATIONS,
         "features": NUMERIC + CATEGORICAL,
         "interval_note": "Prediction bounds, when exposed, are ensemble-tree percentiles and are not statistical confidence intervals.",
-        # (Task 4) Machine-readable mirror of the console summary above, so
-        # anything reading metadata.json (tests, a dashboard, a judge's
-        # script) can check pass/fail without re-parsing stdout.
+        
         "baseline_summary": {
             "total_route_horizon_models": total,
             "passed": total - len(failing),
@@ -396,11 +387,7 @@ class RouteFreightModel:
             except Exception:
                 tree_values = None
             last_rate = float(prior.iloc[-1].freight_usd_per_t)
-            # (Task 4) Look up this exact route+horizon's held-out baseline
-            # comparison from route_freight_model_metadata.json. Missing
-            # metrics (e.g. an older metadata file trained before this field
-            # existed) means "unknown, not verified" — treated as NOT passing
-            # so an unverified model is never assumed trustworthy by default.
+            
             horizon_metrics = self.meta.get("metrics", {}).get(key, {}).get(str(h), {})
             model_beats_baseline = horizon_metrics.get("model_beats_baseline")
             item = {
@@ -422,11 +409,7 @@ class RouteFreightModel:
             curve.append(item)
         if not curve:
             return None
-        # (Task 4) H+1 is the decision point the API uses to decide whether
-        # this route model is allowed to override the BDRY market-proxy
-        # forecast (see app/utils.py ModelBundle.predict). None means
-        # "unknown" (no recorded metrics for this route+horizon) rather than
-        # a pass — callers should treat unknown the same as a fail.
+        
         h1_beats_baseline = next((c.get("model_beats_baseline") for c in curve if c["horizon_months"] == 1), None)
         return {
             "forecast_type": "route_specific",

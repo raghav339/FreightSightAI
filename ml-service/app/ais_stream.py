@@ -25,18 +25,10 @@ from app.idle_detector import Observation, detect_idle_vessel, MIN_IDLE_HOURS, P
 
 try:
     import websocket
-except Exception:  # pragma: no cover
+except Exception:  
     websocket = None
 
-# AISStream's PositionReport.NavigationalStatus is a human-readable string
-# enum (e.g. "UnderWayUsingEngine", "AtAnchor") — NOT the raw 0-15 ITU-R
-# M.1371 integer code that ais_positions.nav_status stores and that
-# idle_detector.py's NAV_STATUS_LABELS/STATIONARY_NAV_STATUSES expect.
-# Writing the string straight into an INT column made every single
-# PositionReport insert fail (see _save_position). Normalize defensively:
-# accept an already-numeric value unchanged, map known string variants,
-# and fall back to None (rather than raising) for anything unrecognized so
-# one unexpected field never crashes the collector loop.
+
 _NAV_STATUS_STRING_TO_INT = {
     "underwayusingengine": 0,
     "atanchor": 1,
@@ -81,9 +73,6 @@ ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("AISSTREAM_DB", str(ROOT / "data" / "production" / "aisstream_live.sqlite3")))
 PORT_INDEX = ROOT / "data" / "production" / "world_port_index_clean.csv"
 
-# World Port Index coordinates from the project's real production dataset.
-# Names here are intentionally explicit so duplicate names (e.g. Gladstone)
-# cannot accidentally resolve to another country.
 PORT_COORDS = {
     "Newcastle": (-32.916667, 151.783333),
     "Hay Point": (-21.283333, 149.300000),
@@ -464,26 +453,12 @@ class AISStreamCollector:
                         elif typ in ("ShipStaticData", "StaticDataReport"):
                             self._save_static(event)
                     except Exception as exc:
-                        # A single malformed/unexpected message must never
-                        # take down the whole connection. Previously any
-                        # error here (e.g. an unmapped field) propagated to
-                        # the outer handler below, which abandoned the
-                        # websocket without closing it — see the `finally`
-                        # block — and reconnected immediately, eventually
-                        # exhausting AISStream's per-key concurrent
-                        # connection limit (HTTP 429 "concurrent
-                        # connections per user exceeded").
                         self.last_error = f"Message handling error ({typ}): {exc}"
             except Exception as exc:
                 self.last_error = str(exc)
-                # Exponential reconnect with jitter.
                 self.stop_event.wait(min(backoff, 60))
                 backoff = min(backoff * 2, 60)
             finally:
-                # Always close the socket on the way out — connect failure,
-                # clean shutdown, or an uncaught error mid-stream — so a
-                # crash never leaks a connection that counts against
-                # AISStream's per-key concurrent connection limit.
                 with self.lock:
                     if self._ws is ws:
                         self._ws = None
@@ -505,16 +480,6 @@ class AISStreamCollector:
 
     def stop(self):
         self.stop_event.set()
-        # Force-close the live socket instead of just flagging stop_event.
-        # The collector thread blocks in ws.recv() for up to 60s at a time,
-        # so stop_event alone can leave the process waiting on that recv()
-        # while the platform's SIGTERM->SIGKILL grace period runs out —
-        # killing the process with the socket still open. AISStream then
-        # keeps counting that connection as live under our API key until
-        # it times out on their end, so every restart/redeploy can leak
-        # one more connection and eventually trip the concurrent-connection
-        # 429. Closing here makes the pending recv() raise immediately, so
-        # the loop's `finally` block (see _loop) always runs before exit.
         with self.lock:
             ws = self._ws
         if ws is not None:
@@ -672,7 +637,6 @@ class AISStreamCollector:
 
         results = []
         for mmsi, history in histories.items():
-            # Keep only a realistic contiguous window near the latest fix.
             latest_time = history[-1].timestamp
             window_start = latest_time - timedelta(hours=min(72, lookback_hours))
             recent = [item for item in history if item.timestamp >= window_start]

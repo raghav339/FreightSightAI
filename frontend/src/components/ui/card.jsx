@@ -1,4 +1,3 @@
-// frontend/src/components/ui/card.jsx
 import { cn } from "../../lib/utils.js";
 
 export function Card({ className, children, ...props }) {

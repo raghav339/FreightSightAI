@@ -1,4 +1,3 @@
-// frontend/src/pages/Predict.jsx
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import ForecastForm from "../components/ForecastForm.jsx";
@@ -49,4 +48,3 @@ export default function Predict() {
     </section>
   );
 }
-

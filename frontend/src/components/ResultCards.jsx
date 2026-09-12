@@ -1,4 +1,3 @@
-// frontend/src/components/ResultCards.jsx
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Gauge, ShieldAlert, ShipWheel, CalendarClock, Sparkles, Anchor, TimerReset, RadioTower, FileSignature, Map as MapIcon, BrainCircuit, Download, Route } from "lucide-react";

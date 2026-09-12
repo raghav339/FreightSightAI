@@ -1,4 +1,3 @@
-// frontend/src/components/Navbar.jsx
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,10 +10,6 @@ import api from "../api/client.js";
 const HEALTH_CHECK_INTERVAL_MS = 15000;
 const HEALTH_CHECK_TIMEOUT_MS = 5000;
 
-// BUGFIX: this used to be a hardcoded "Console online" badge that never
-// actually checked anything — it stayed green even with the backend fully
-// stopped. Poll GET /api/health on an interval (and immediately on mount /
-// when the tab regains focus) and reflect the real result instead.
 function useBackendStatus() {
   const [status, setStatus] = useState("checking"); // "checking" | "online" | "offline"
   const inFlight = useRef(false);

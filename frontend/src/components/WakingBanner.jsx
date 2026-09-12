@@ -1,4 +1,3 @@
-// frontend/src/components/WakingBanner.jsx
 // Listens to the mlWakeup bus (see api/client.js + api/mlWakeup.js) and
 // shows a small non-blocking banner while a request is probably waiting
 // on a Render free-tier cold start, instead of leaving the user staring

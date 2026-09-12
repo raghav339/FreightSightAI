@@ -1,4 +1,3 @@
-// frontend/src/pages/IdleVesselFinder.jsx
 // (6) Idle-vessel repositioning — given a vessel idle at a port, rank the
 // next-best loading ports to reposition to, weighing predicted freight
 // earnings against ballast/idle time.
@@ -136,14 +135,6 @@ export default function IdleVesselFinder() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {aisVessels.vessels.map((vessel) => {
-                    // "Current port" (the field this button fills in) is only
-                    // ever a discharge-side port (meta.destinations) — that's
-                    // what /idle-alternatives expects to search *from*. AIS
-                    // nearest-port lookups cover every tracked port, including
-                    // loading-side origins (Newcastle, Baltimore, etc.), which
-                    // aren't valid values for that field. Filling it in with
-                    // one silently didn't match any <option>, so the dropdown
-                    // looked untouched and the button appeared broken.
                     const canReposition = !!vessel.nearest_port && meta.destinations.includes(vessel.nearest_port);
                     return (
                     <div key={vessel.mmsi} className="rounded-xl border border-hull-600/60 bg-hull-900/50 p-4">

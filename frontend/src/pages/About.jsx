@@ -1,4 +1,3 @@
-// frontend/src/pages/About.jsx
 import { motion } from "framer-motion";
 import { ClipboardList, Server, Cpu, DatabaseZap, MonitorSmartphone } from "lucide-react";
 import { Card } from "../components/ui/card.jsx";

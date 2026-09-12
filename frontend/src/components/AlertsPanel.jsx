@@ -1,4 +1,3 @@
-// frontend/src/components/AlertsPanel.jsx
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { BellRing } from "lucide-react";

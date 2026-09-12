@@ -44,13 +44,7 @@ class ModelBundle:
         self.reg=joblib.load(MODELS_DIR/"forecast_model.joblib")
         self.clf=joblib.load(MODELS_DIR/"risk_model.joblib")
         self.encoder=joblib.load(MODELS_DIR/"feature_encoder.joblib")
-        # (Phase 4) Additional direct horizon models — H+2, H+3. Loaded
-        # only if metadata says they were actually trained (older model
-        # artifacts trained before this feature won't have them). Missing
-        # an horizon file that metadata claims exists is a controlled
-        # startup error, not a silent single-horizon fallback — a judge
-        # asking for H+3 should get a real answer or an honest error, never
-        # a relabeled H+1 number.
+
         self.horizon_models = {1: self.reg}
         # Route-level synthetic freight curve for the MVP. The model is
         # explicitly provenance-tagged and only used when no verified
@@ -255,15 +249,6 @@ class ModelBundle:
         num = np.array([[values[n] for n in self.meta["numeric_features"]]], dtype=float)
         X = np.concatenate([num, cat], axis=1)
 
-        # (See train.py "target_transform" comment / metadata.json
-        # target_transform for the full rationale.) The model was trained
-        # to predict the CHANGE in BDRY relative to the most recently known
-        # real value (bdry_lag1), not the absolute level — RandomForest
-        # leaves cannot extrapolate beyond the level range seen during
-        # training, which silently produced badly under-forecast levels on
-        # a trending series. Reconstruct the level the same way training's
-        # evaluation did, so every downstream field below stays in the same
-        # USD-rate units the frontend/PDF/history already expect.
         prev = float(lookup["bdry_lag1"])
         predicted_delta = float(self.reg.predict(X)[0])
         forecast = prev + predicted_delta
@@ -319,14 +304,7 @@ class ModelBundle:
             route_freight_result = self.route_freight.predict(
                 req.origin_port, req.destination_port, req.shipment_date, commodity=req.commodity
             )
-        # (Task 4) A route-specific model is only allowed to override the
-        # BDRY market-proxy forecast if it actually beat naive persistence
-        # on held-out data (see route_freight_model.py train()/predict()).
-        # This is the exact guardrail for the disclosed finding that a
-        # route model can score worse than "do nothing" (H+1 MAE 5.76 vs.
-        # naive 3.46) — that result must never be silently served as if it
-        # were the trustworthy forecast. Unknown (None, e.g. older metadata
-        # without this field) is treated as NOT passing, not as a pass.
+        
         route_model_beats_baseline = route_freight_result.get("model_beats_baseline") if route_freight_result else None
         use_route_freight = bool(route_freight_result and route_freight_result.get("forecasts"))
         route_model_fallback_note = None
@@ -379,10 +357,6 @@ class ModelBundle:
 
         # dest_port_info/port_depth come from `core` above (destination-only,
         # unaffected by origin) — see _core_forecast.
-        # Phase 6: origin port must be checked with the SAME constraint
-        # engine as the destination — previously only the destination was
-        # validated, so a vessel could be "recommended" that couldn't
-        # actually load at the origin port.
         origin_port_info = port_utils.get_port(req.origin_port)
 
         feasible_candidates, rejected_candidates = port_utils.feasible_vessels_both_ports(
@@ -413,12 +387,7 @@ class ModelBundle:
                 vessel = requested_vessel
                 vessel_status = "REQUESTED_VESSEL_FEASIBLE"
             else:
-                # Phase 24/25: an infeasible REQUESTED vessel must never break
-                # the whole forecast. Previously this raised ValueError ->
-                # HTTP 400 for the entire request, discarding the rate/risk
-                # forecast along with it. Now: keep the forecast, report the
-                # rejection reason, and fall back to the best feasible
-                # vessel if one exists (or none, if truly no vessel fits).
+                
                 rej = next((r for r in rejected_candidates if r["vessel_class"] == requested_vessel), None)
                 vessel_rejection_reason = (
                     rej["rejection_reason"] if rej
@@ -605,13 +574,6 @@ class ModelBundle:
         origins = self.meta.get("origins", [])
         core = self._core_forecast(req.destination_port, req.commodity, req.shipment_date)
 
-        # NOTE: the old code also fetched AIS stats for req.destination_port
-        # on every single origin iteration via route_features(), even
-        # though the destination never changes across the loop AND that
-        # destination half of the result was thrown away (only `origin` was
-        # ever read into ais_congestion below). That was pure wasted work —
-        # a full extra sqlite round trip, 11 times, for data nobody used —
-        # so it's simply dropped rather than "fetched once and reused".
         ais_live = ais_collector is not None and ais_collector.enabled
 
         def build_row(origin):
@@ -635,11 +597,7 @@ class ModelBundle:
 
             origin_info = port_utils.get_port(origin)
             if origin_info is None:
-                # BUGFIX: an origin with no port-infrastructure data used to
-                # be silently included in `results` with null feasibility/
-                # congestion fields, looking like a valid (if unremarkable)
-                # option. That data gap belongs in `errors`, surfaced to the
-                # caller, not hidden inside an otherwise-normal-looking row.
+                
                 return ("error", {
                     "origin_port": origin,
                     "error": "No port infrastructure data available for this origin.",
@@ -654,15 +612,7 @@ class ModelBundle:
                 if transit_days is not None else None
             )
 
-            # TASK 7: live AIS congestion signal per origin.
-            # `origin_port_congestion` above stays the static
-            # port_infra.json rating exactly as before (nothing depends on
-            # it disappearing). This adds a second, clearly-labeled
-            # `ais_congestion` field alongside it, populated only when a
-            # live AISStream collector is actually connected. Any failure
-            # here (feed down, unknown port for AIS, disabled collector)
-            # must never break compare_origins — it just falls back to
-            # "available": False and the static rating keeps doing its job.
+            
             ais_congestion = {
                 "available": False,
                 "congestion_index": None,

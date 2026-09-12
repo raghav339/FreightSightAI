@@ -1,4 +1,3 @@
-// frontend/src/components/ui/tilt-card.jsx
 // A lightweight, dependency-free 3D tilt effect driven by pointer position.
 // Respects prefers-reduced-motion by skipping the transform entirely.
 import { useRef } from "react";

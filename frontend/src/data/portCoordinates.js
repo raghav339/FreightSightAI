@@ -1,4 +1,3 @@
-// frontend/src/data/portCoordinates.js
 // Approximate lat/lng for every port FreightSight AI's model knows about
 // (see ml-service/train.py EAST_COAST + origins list, and
 // ml-service/data/world_port_index_clean.csv for the India discharge ports).

@@ -445,54 +445,10 @@ def main(data_dir=None, output_dir=None):
     # Target = next month's BDRY.
     bdry_series=bdry.set_index("month")["bdry"]
     master["target_rate"]=master["month"].map(bdry_series.shift(-1))
-    # (Phase: forecast architecture fix — see README "Known limitations" /
-    # implementation report for the diagnosis.) Predicting the RAW LEVEL of
-    # a steadily-trending series with a RandomForest is a known failure
-    # mode: every leaf of a regression tree predicts the MEAN of the
-    # training targets that landed in it, so the model can never output a
-    # value outside the min/max range of target_rate it saw during
-    # training. BDRY trended from ~72 (2016) to ~155 (2025) in this
-    # dataset, so a chronological test split whose target values sit above
-    # the entire training range guarantees the model under-predicts by
-    # construction — confirmed empirically: this model's test predictions
-    # were clamped to ~128-131 while true test values were ~146-163, and
-    # its MAE (23.8) was ~5x WORSE than trivially reusing last month's BDRY
-    # (naive persistence MAE 4.9). This is not a model-capacity problem
-    # that more trees fix; it is a target-formulation problem.
-    #
-    # Fix: train the regressor on the CHANGE relative to the most recently
-    # known real value (target_delta = target_rate - bdry_lag1) instead of
-    # the absolute level. A month-over-month change is far more stationary
-    # (roughly centered near zero) than the level itself, so it stays
-    # within the training range even when the underlying series keeps
-    # trending. At prediction time the level is reconstructed as
-    # bdry_lag1 + predicted_delta. This keeps every existing model
-    # input/output-facing field (predicted_freight_rate_usd_per_ton, etc.)
-    # in the same units and API shape — only what the RandomForest is
-    # asked to learn changes.
+    
     master["target_delta"]=master["target_rate"]-master["bdry_lag1"]
 
-    # (Phase 4) Multi-horizon forecasting — H+2 and H+3.
-    #
-    # ANTI-PATTERN THIS AVOIDS: simply re-running the H+1 model with the
-    # month/quarter feature bumped forward while every market feature
-    # (bdry_lag1, brent_lag1, tonnage, ...) stays frozen at the anchor
-    # month is NOT a genuine multi-month forecast — it just relabels the
-    # same single-step prediction as if it were further out.
-    #
-    # Instead: separate DIRECT horizon models. Each is trained to predict
-    # bdry at month (t+h) using ONLY features known at month t (the same
-    # feature row used for H+1) — never features that would require
-    # already knowing the future. This is "direct multi-output
-    # forecasting" (one model per horizon) rather than recursive
-    # forecasting, which was avoided here specifically to sidestep
-    # recursive error explosion (each recursive step would compound the
-    # previous step's own prediction error into its input features).
-    #
-    # Target is again a DELTA relative to bdry_lag1 (not the raw level),
-    # for the same extrapolation reason documented above — this matters
-    # even more at H+2/H+3 since the level drifts further from the
-    # training range the further out you go.
+   
     HORIZONS = [1, 2, 3]
     for h in HORIZONS:
         master[f"target_rate_h{h}"] = master["month"].map(bdry_series.shift(-h))
@@ -517,7 +473,7 @@ def main(data_dir=None, output_dir=None):
     cut = unique_months[max(1, int(len(unique_months) * 0.8) - 1)]
 
     # ------------------------------------------------------------------
-    # (Phase 8) Hybrid risk engine.
+    # Hybrid risk engine.
     #
     # ORIGINAL DESIGN AND ITS FAILURE MODE: the risk target used to be
     # PURELY next month's market-wide BDRY volatility, bucketed into
@@ -699,7 +655,7 @@ def main(data_dir=None, output_dir=None):
     mae=mean_absolute_error(test.target_rate,pred)
 
     # ------------------------------------------------------------------
-    # (Phase 9) Baseline comparison.
+    # Baseline comparison.
     #
     # An MAE number in isolation says nothing about whether the RandomForest
     # is actually earning its complexity — a model that beats "do nothing"
@@ -749,7 +705,7 @@ def main(data_dir=None, output_dir=None):
     }
 
     # ------------------------------------------------------------------
-    # (Phase 4) Multi-horizon models: H+1 (reg, above), H+2, H+3.
+    # Multi-horizon models: H+1 (reg, above), H+2, H+3.
     #
     # Xtr/Xte (built above from the FULL train/test frames) are reused
     # unchanged for every horizon — each horizon model sees the exact same
@@ -808,7 +764,7 @@ def main(data_dir=None, output_dir=None):
     y_true=test.target_risk.map(classes); y_pred=rp
     acc=accuracy_score(y_true,rp); cm=confusion_matrix(y_true,rp,labels=[0,1,2]).tolist()
 
-    # (Phase 8) Comprehensive risk-classifier evaluation — plain accuracy on
+    # Comprehensive risk-classifier evaluation — plain accuracy on
     # a 3-way imbalanced problem is easy to game (a classifier that always
     # predicts the majority class can score deceptively well) and doesn't
     # say anything about the minority/high-risk class specifically. Compute
@@ -879,7 +835,7 @@ def main(data_dir=None, output_dir=None):
         .to_dict(orient="records")
     )
 
-    # (Phase 12) Training-run identity, real split boundaries/counts, model
+    # Training-run identity, real split boundaries/counts, model
     # hyperparameters, and library versions — computed, not hand-typed, so
     # every trained model can be traced back to exactly what produced it.
     training_timestamp = datetime.now(timezone.utc).isoformat()

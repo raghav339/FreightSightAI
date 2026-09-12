@@ -1,4 +1,3 @@
-// frontend/src/pages/CompareOrigins.jsx
 // (2) Route/origin comparison — pick a destination, commodity, cargo, and
 // date, and rank every known loading port (Australia/US/Mozambique/Russia/
 // Indonesia) by vessel feasibility, transit time, and congestion.

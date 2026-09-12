@@ -1,4 +1,3 @@
-// frontend/src/components/ui/RouteMap.jsx
 // Bridge-console route map: dark basemap, AIS-style glow markers for the
 // origin and destination port, and an animated dashed course line between
 // them — same visual style as the landing page's RouteVisual, but
@@ -192,4 +191,3 @@ export default function RouteMap({ origin, destination, className }) {
     </div>
   );
 }
-

@@ -1,4 +1,3 @@
-// frontend/src/components/TrendChart.jsx
 import { useEffect, useState } from "react";
 import {
   LineChart,

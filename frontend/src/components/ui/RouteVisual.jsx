@@ -1,4 +1,3 @@
-// frontend/src/components/RouteVisual.jsx
 // The hero's signature moment: a shipping lane between two ports, an AIS-style
 // pulse at each terminus, and a vessel gliding along the course. Built from
 // the subject matter itself (freight routes) rather than a stock illustration.

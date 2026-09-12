@@ -4,27 +4,6 @@ port FreightSight actually uses, replacing the old 18-port illustrative
 `port_infra.json` bank/handling-rate numbers with values traceable to the
 free, public-domain NGA World Port Index (WPI / Pub. 150).
 
-WHY THIS EXISTS (Task 6)
-------------------------
-`port_infra.json` covered only 18 hardcoded ports and its own `_note` field
-already flagged it as "illustrative... replace with authoritative
-port-authority / IHS-Markit figures before production use." IHS-Markit is
-paid. `data/production/world_port_index_clean.csv` (NGA World Port Index —
-free, public-domain, ~3,630 ports) is already in the repo and was NOT
-actually being used correctly: `app/port_utils.py`'s existing
-`_load_world_port_index()` looks for numeric columns like
-"cargo pier depth (m)" that do not exist in this cleaned CSV — the real
-columns (`chan_depth`, `cargodepth`, `anch_depth`) are NGA's letter-coded
-5-foot depth bands (e.g. "K" = 31-35 ft), not raw meters. Passing a letter
-straight to `float()` silently fails and the WPI depth data was never
-actually reaching the feasibility checks.
-
-This script decodes those letter codes properly (see DEPTH_CODE_METERS
-below) and produces a real numeric max_draft_m for every port FreightSight
-references, plus a clearly-labeled *estimated* (not measured) handling-rate
-tier derived from WPI's crane-presence flags, since WPI is a navigational
-chart index and has no operations/handling-rate field at all.
-
 USAGE
 -----
     python scripts/build_port_infra_from_wpi.py

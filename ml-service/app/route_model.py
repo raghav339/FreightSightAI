@@ -189,15 +189,6 @@ class RouteModel:
             except TypeError:
                 # Backward-compatible support for lightweight test doubles / older route model adapters.
                 direct = self.route_freight.predict(origin, destination, shipment_date)
-            # (Task 4) Same guardrail as ModelBundle.predict() in app/utils.py:
-            # a route-specific model that did not beat naive persistence on
-            # held-out data (or has no recorded comparison at all — test
-            # doubles/older adapters legitimately won't set this key) must
-            # never be silently served here either. `.get(...)` rather than
-            # a plain key lookup keeps lightweight test doubles (which return
-            # a bare dict with no "model_beats_baseline" key) working exactly
-            # as before, since "unknown" only changes behavior once real
-            # metrics are recorded and actually fail.
             if direct is not None and direct.get("model_beats_baseline") is False:
                 direct = None
             if direct is not None:
