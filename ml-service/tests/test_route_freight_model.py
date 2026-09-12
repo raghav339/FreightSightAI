@@ -64,23 +64,31 @@ class RouteFreightModelTests(unittest.TestCase):
         model_dir = ROOT / "models"
         model = RouteFreightModel(model_dir, ROOT / "data" / "production")
         self.assertEqual(model.data_mode, "synthetic_mvp")
-        # 8 lanes x 140 monthly observations each (includes the
-        # Newcastle-Chennai/R8 lane added for the market-proxy tests).
+        # 8 lanes x 140 monthly observations each.
         self.assertEqual(len(model.data), 1120)
-        for origin, destination, commodity in [
-            ("Newcastle", "Visakhapatnam", "Coal"),
-            ("Tubarao", "Paradip", "Iron Ore"),
-            ("Richards Bay", "Krishnapatnam", "Coal"),
-            ("Kalimantan", "Kamarajar", "Coal"),
-            ("Port Hedland", "Chennai", "Iron Ore"),
-            ("Norfolk", "Haldia", "Bulk Minerals And Ores"),
-            ("Saldanha Bay", "Visakhapatnam", "Iron Ore"),
+        for origin, destination, commodity, route_id in [
+            ("Newcastle", "Visakhapatnam", "Coal", "R1"),
+            ("Tubarao", "Paradip", "Iron Ore", "R2"),
+            ("Richards Bay", "Krishnapatnam", "Coal", "R3"),
+            ("Kalimantan", "Kamarajar", "Coal", "R4"),
+            ("Port Hedland", "Chennai", "Iron Ore", "R5"),
+            ("Norfolk", "Haldia", "Bulk Minerals And Ores", "R6"),
+            ("Saldanha Bay", "Visakhapatnam", "Iron Ore", "R7"),
+            ("Newcastle", "Chennai", "Iron Ore", "R8"),
         ]:
+            self.assertTrue(model.has_route(origin, destination, route_id=route_id, commodity=commodity))
             result = model.predict(origin, destination, "2026-09-01", commodity=commodity)
             self.assertIsNotNone(result)
+            self.assertEqual(result["forecast_type"], "route_specific")
             self.assertEqual(result["data_mode"], "synthetic_mvp")
-            self.assertEqual(len(result["forecasts"]), 3)
-            self.assertGreater(result["forecasts"][0]["predicted_rate_usd_per_ton"], 0)
+            self.assertEqual(result["data_confidence"], "low")
+            self.assertEqual(result["route"], f"{origin}-{destination}")
+            self.assertEqual(result["commodity"], commodity)
+            self.assertGreaterEqual(len(result["forecasts"]), 3)
+            for point in result["forecasts"]:
+                self.assertIn("predicted_rate_usd_per_ton", point)
+                self.assertGreater(point["predicted_rate_usd_per_ton"], 0)
+                self.assertEqual(point["basis"], "synthetic_route_freight")
 
 
 if __name__ == "__main__":
