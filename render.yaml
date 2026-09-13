@@ -55,7 +55,7 @@ services:
     name: freightsightai-backend
     runtime: node
     rootDir: backend
-    buildCommand: "npm install "
+    buildCommand: "npm install && npm run init-db"
     startCommand: "npm start"
     envVars:
       - key: NODE_VERSION
@@ -100,11 +100,6 @@ services:
     rootDir: frontend
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
-
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
     envVars:
       # Frontend -> Backend API. Do NOT point this at the ML service.
       - key: VITE_API_URL

@@ -89,12 +89,11 @@ async function insertForecastRequestAndResult({ userId, overrides = {} } = {}) {
 
 async function insertAlert(overrides = {}) {
   const result = await db.run(
-    `INSERT INTO alerts (route, alert_type, message, user_id) VALUES (?, ?, ?, ?)`,
+    `INSERT INTO alerts (route, alert_type, message) VALUES (?, ?, ?)`,
     [
       overrides.route || "Newcastle-Paradip",
       overrides.alert_type || "high_risk",
       overrides.message || `${TEST_TAG} fixture alert`,
-      overrides.userId ?? null,
     ]
   );
   return { id: result.lastID };

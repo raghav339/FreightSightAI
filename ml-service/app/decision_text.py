@@ -6,31 +6,6 @@ forecast/decision engine. The application emits one consistent English wording s
 
 import re
 
-# Single source of truth for how each `forecast_type` value (see
-# app/utils.py / app/route_model.py, and the mirrored copy of this table in
-# frontend/src/lib/forecastType.js) is described in generated English text.
-# Whatever produced the forecast — the global BDRY market index, the
-# synthetic MVP route-freight dataset, a verified route-specific model, or
-# the AIS-enhanced proxy — the summary sentence below should name THAT
-# model, not default to "BDRY" regardless. Add a new forecast_type here
-# whenever one is introduced elsewhere, or its summary text will silently
-# fall back to the market_proxy wording.
-FORECAST_TYPE_BASIS_PHRASE = {
-    'market_proxy': 'the BDRY dry-bulk market-proxy model',
-    'synthetic_route': 'the synthetic route-freight model',
-    'route_specific': 'the route-specific freight model',
-    'observed_route': 'observed route freight data',
-    'ais_enhanced_route_proxy': 'the AIS-enhanced market-proxy model',
-}
-DEFAULT_FORECAST_TYPE = 'market_proxy'
-
-
-def forecast_basis_phrase(forecast_type):
-    return FORECAST_TYPE_BASIS_PHRASE.get(
-        forecast_type, FORECAST_TYPE_BASIS_PHRASE[DEFAULT_FORECAST_TYPE]
-    )
-
-
 TEXT = {'rise': 'rise',
  'fall': 'fall',
  'flat': 'stay broadly flat',
@@ -41,11 +16,8 @@ TEXT = {'rise': 'rise',
  'window_up': 'Charter within the next 1–2 weeks (rate trending up)',
  'window_down': 'You can wait 2–4 weeks (rate trending down)',
  'window_flat': 'Rate is stable; charter on your normal schedule',
- # {basis_phrase} names the ACTUAL model behind this forecast (see
- # FORECAST_TYPE_BASIS_PHRASE above) instead of a hardcoded "BDRY" that
- # was wrong for synthetic/route-specific/AIS-enhanced forecasts.
- 'summary': 'Forecast generated for the {origin} \u2192 {destination} route using {basis_phrase}. The rate is '
-            'forecast to {direction} to about ${forecast:.2f}/unit. {risk_text} {window}. {note}',
+ 'summary': 'For {commodity} into {destination}, the BDRY dry-bulk freight-rate proxy is forecast to {direction} to '
+            'about ${forecast:.2f}/unit. {risk_text} {window}. {note}',
  'vessel': 'The recommended vessel is {vessel}. {note}',
  'idle_high': 'Estimated turnaround at discharge is ~{days} days, above the 4-day comfort band. Pre-book a laycan '
               "window with buffer, and line up a backhaul or repositioning cargo so the vessel isn't idle waiting at "
@@ -103,7 +75,6 @@ TEXT = {'rise': 'rise',
  'delay_note': ' An additional {delay:g} day(s) of expected delay flagged on this request has been folded into the turnaround estimate above.',
  'transit_provided': 'Using the supplied distance of {distance_km:,.0f} km, estimated sea transit from {origin} to {destination} is about {days} days at a typical {speed:.1f}-knot laden bulk-carrier service speed.',
  'transit_table': 'Estimated sea transit from {origin} to {destination} is about {days} days, based on an indicative route-distance table (no distance was supplied on the request).',
- 'transit_geodesic': 'Estimated sea transit from {origin} to {destination} is about {days} days. No distance was supplied and this pair is not in the indicative route-distance table, so the distance was estimated from great-circle distance adjusted for {origin}\'s typical routing detour — treat this as a rougher estimate than a table-listed route.',
  'transit_unavailable': 'No distance was supplied, and this origin-destination pair is not in the indicative route-distance table, so a transit-time estimate is not available.',
  'stowage_light': 'At {factor:.2f} m3/t, this cargo is relatively light/bulky for its weight (typical dry-bulk cargoes run roughly 0.4-1.6 m3/t) — cubic capacity, not deadweight, may end up being the binding constraint on vessel choice; confirm against the specific vessel class grain/bale capacity.',
  'stowage_dense': 'At {factor:.2f} m3/t, this cargo is relatively dense for its weight (typical dry-bulk cargoes run roughly 0.4-1.6 m3/t) — deadweight is very likely the binding constraint, consistent with the DWT-based vessel check above.',
@@ -141,8 +112,6 @@ def build_transit_note(*, origin, destination, transit_days, source, distance_km
         return TEXT["transit_provided"].format(distance_km=distance_km, origin=origin, destination=destination, days=transit_days, speed=speed_knots)
     if source == "route_table":
         return TEXT["transit_table"].format(origin=origin, destination=destination, days=transit_days)
-    if source == "geodesic_estimate":
-        return TEXT["transit_geodesic"].format(origin=origin, destination=destination, days=transit_days)
     return TEXT["transit_unavailable"]
 
 
@@ -158,7 +127,7 @@ def build_mode_note(*, mode):
     return TEXT["mode_charter"] if str(mode).strip().lower() == "charter" else TEXT["mode_spot"]
 
 
-def build_prediction_text(*, commodity, origin, destination, forecast, risk, direction, note, vessel, turnaround, pct_move, delay_days=0, forecast_type=DEFAULT_FORECAST_TYPE):
+def build_prediction_text(*, commodity, destination, forecast, risk, direction, note, vessel, turnaround, pct_move, delay_days=0):
     risk_text = TEXT["risk"].format(risk=TEXT.get(f"risk_{risk}", risk))
     if pct_move > 0.03:
         window = TEXT["window_up"]
@@ -166,8 +135,7 @@ def build_prediction_text(*, commodity, origin, destination, forecast, risk, dir
         window = TEXT["window_down"]
     else:
         window = TEXT["window_flat"]
-    basis_phrase = forecast_basis_phrase(forecast_type)
-    summary = TEXT["summary"].format(origin=origin, destination=destination, basis_phrase=basis_phrase, forecast=forecast, direction=TEXT[direction], risk_text=risk_text, window=window, note=note)
+    summary = TEXT["summary"].format(commodity=commodity, destination=destination, forecast=forecast, direction=TEXT[direction], risk_text=risk_text, window=window, note=note)
     if turnaround > 4 and risk in ("medium", "high"):
         idle = TEXT["idle_high"].format(days=turnaround)
     elif pct_move < -0.03:

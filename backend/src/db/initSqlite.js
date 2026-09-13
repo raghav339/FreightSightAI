@@ -97,11 +97,6 @@ CREATE TABLE IF NOT EXISTS alerts (
   alert_type TEXT NOT NULL CHECK (alert_type IN ('high_risk','price_spike','volatility')),
   message TEXT NOT NULL,
   forecast_result_id INTEGER,
-  -- Owning user, so GET /api/alerts and mark-read can be scoped per user
-  -- instead of leaking every user's alerts to every caller. Nullable
-  -- because alerts can originate from anonymous (not-logged-in) forecasts
-  -- or from the ML-service-unavailable failure path, which have no user.
-  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (forecast_result_id) REFERENCES forecast_results(id) ON DELETE SET NULL
 );

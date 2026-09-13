@@ -171,6 +171,7 @@ Never expose `AISSTREAM_API_KEY` through a `VITE_*` frontend variable.
 6. Submit the forecast.
 7. Review:
    - predicted freight rate
+   - H+1/H+2/H+3 curve
    - risk
    - model/data confidence
    - vessel recommendation
@@ -292,3 +293,4 @@ The FastAPI app was also exercised directly with its test client. The following 
 ### Persistent AIS storage (MySQL)
 
 Live AIS `PositionReport` and `ShipStaticData` records are persisted in the same MySQL database used by the backend. This means AIS history survives ML-service/Render restarts and redeploys. The collector keeps the latest 30 days by default (`AIS_RETENTION_DAYS=30`).
+

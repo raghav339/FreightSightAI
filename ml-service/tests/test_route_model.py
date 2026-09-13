@@ -27,33 +27,5 @@ class RouteModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.model.predict("NotAPort","Paradip","2026-09-04",10.0)
 
-    def test_ais_freshness_is_exposed_and_reflects_real_data_age(self):
-        """The response must expose which mode (LIVE/RECENT/STALE/
-        UNAVAILABLE) actually produced the route features, and it must be
-        computed from the real age of the underlying data — not from the
-        requested shipment_date, and not fabricated as "now"."""
-        result = self.model.predict("Newcastle", "Paradip", "2026-09-04", 10.0)
-        self.assertIn("ais", result)
-        ais = result["ais"]
-        self.assertIn(ais["status"], ("live", "recent", "stale", "unavailable"))
-        # This project's shipped PortWatch route features stop in Oct 2024 and
-        # no AISStream credentials are configured in the test environment, so
-        # this must honestly report "stale", not silently look current.
-        self.assertEqual(ais["status"], "stale")
-        self.assertEqual(ais["last_update"], "2024-10-01")
-
-    def test_ais_freshness_reported_even_on_direct_route_freight_path(self):
-        class Direct:
-            def predict(self, origin, destination, shipment_date):
-                return {"forecast_type": "route_specific", "route": f"{origin}-{destination}", "forecasts": []}
-        original_route_freight = self.model.route_freight
-        self.model.route_freight = Direct()
-        try:
-            result = self.model.predict("Newcastle", "Paradip", "2026-09-04", 10.0)
-            self.assertIn("ais", result)
-            self.assertEqual(result["ais"]["status"], "stale")
-        finally:
-            self.model.route_freight = original_route_freight
-
 if __name__=="__main__":
     unittest.main()

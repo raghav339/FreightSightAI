@@ -3,31 +3,31 @@
   "data_source_mode": "production",
   "data_dir": "/home/claude/FreightSightAI/FreightSightAI/ml-service/data/production",
   "training_run": {
-    "model_version": "real_monthly_v2-2026-09-13T06:24:05.516520+00:00-ae00b61df1f6a4eb",
-    "training_timestamp": "2026-09-13T06:24:05.516520+00:00",
+    "model_version": "real_monthly_v2-2026-09-12T14:33:47.720890+00:00-3ee399c2d1c3c922",
+    "training_timestamp": "2026-09-12T14:33:47.720890+00:00",
     "data_source_mode": "production",
-    "dataset_id": "production-ae00b61df1f6a4eb",
-    "dataset_hash": "ae00b61df1f6a4eb",
+    "dataset_id": "production-3ee399c2d1c3c922",
+    "dataset_hash": "3ee399c2d1c3c922",
     "dataset_file_hashes": {
       "bdry.csv": "36236732daecf560",
-      "brent_oil.csv": "1041c6d12167e545",
+      "brent_oil.csv": "3b6eb8a7395341ac",
       "global_cargo_ships.csv": "49fd8534d5d5751b",
       "india_trade_2010_2021.csv": "64cfce78f3a0c36d",
       "ores_minerals_trade.csv": "6662f72bbff9b757",
       "portwatch_daily.csv": "fa6c2daeaad2d156",
       "world_port_index_clean.csv": "e5c7e9d06e0aecdd"
     },
-    "training_row_count": 2370,
+    "training_row_count": 1290,
     "validation_row_count": 0,
-    "test_row_count": 600,
+    "test_row_count": 330,
     "training_period": {
       "start": "2018-06-01",
-      "end": "2024-12-01"
+      "end": "2021-12-01"
     },
     "validation_period": null,
     "test_period": {
-      "start": "2025-01-01",
-      "end": "2026-08-01"
+      "start": "2022-01-01",
+      "end": "2022-11-01"
     },
     "validation_note": "This pipeline uses a single chronological 80/20 train/test split, not a separate validation holdout \u2014 with ~119 total months, a third split would leave too few test months to evaluate meaningfully (see README 'Known limitations'). validation_row_count is genuinely 0, not omitted.",
     "algorithm": {
@@ -46,8 +46,8 @@
         "random_state": 42,
         "n_jobs": -1,
         "thresholds": [
-          0.43359567901234564,
-          0.5876311728395062
+          0.43296296296296294,
+          0.5933249158249159
         ]
       }
     },
@@ -60,9 +60,9 @@
       "joblib": "1.5.3"
     }
   },
-  "training_row_count": 2370,
-  "test_row_count": 600,
-  "model_version": "real_monthly_v2-2026-09-13T06:24:05.516520+00:00-ae00b61df1f6a4eb",
+  "training_row_count": 1290,
+  "test_row_count": 330,
+  "model_version": "real_monthly_v2-2026-09-12T14:33:47.720890+00:00-3ee399c2d1c3c922",
   "feature_cols": [
     "bdry_lag1",
     "bdry_lag2",
@@ -326,577 +326,545 @@
   ],
   "latest_lookup": {
     "Chennai|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
-      "vessel_calls": 0.25925925925925924,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.8666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.016666666666666666,
+      "_congestion_pctile": 0.32407407407407407,
       "_data_uncertainty": 0.0
     },
     "Chennai|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
-      "vessel_calls": 0.25925925925925924,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.8666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.016666666666666666,
+      "_congestion_pctile": 0.32407407407407407,
       "_data_uncertainty": 0.0
     },
     "Chennai|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
-      "vessel_calls": 0.25925925925925924,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.8666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.016666666666666666,
+      "_congestion_pctile": 0.32407407407407407,
       "_data_uncertainty": 0.0
     },
     "Dhamra|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Dhamra|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Dhamra|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Gangavaram|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Gangavaram|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Gangavaram|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Gopalpur|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Gopalpur|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Gopalpur|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Haldia|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
-      "import_volume": 30771.001930496514,
-      "export_volume": 1562.6443918007617,
-      "vessel_calls": 1.4074074074074074,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
+      "import_volume": 10364.46076002867,
+      "export_volume": 2684.225992991892,
+      "vessel_calls": 1.6666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.5071428571428571,
+      "_congestion_pctile": 0.5370370370370371,
       "_data_uncertainty": 0.0
     },
     "Haldia|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 30771.001930496514,
-      "export_volume": 1562.6443918007617,
-      "vessel_calls": 1.4074074074074074,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "import_volume": 10364.46076002867,
+      "export_volume": 2684.225992991892,
+      "vessel_calls": 1.6666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.5071428571428571,
+      "_congestion_pctile": 0.5370370370370371,
       "_data_uncertainty": 0.0
     },
     "Haldia|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 30771.001930496514,
-      "export_volume": 1562.6443918007617,
-      "vessel_calls": 1.4074074074074074,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "import_volume": 10364.46076002867,
+      "export_volume": 2684.225992991892,
+      "vessel_calls": 1.6666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.5071428571428571,
+      "_congestion_pctile": 0.5370370370370371,
       "_data_uncertainty": 0.0
     },
     "Kamarajar|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
-      "import_volume": 33101.82498340103,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
+      "import_volume": 34666.581048649634,
       "export_volume": 0.0,
-      "vessel_calls": 0.7777777777777778,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.8666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.23095238095238096,
+      "_congestion_pctile": 0.32407407407407407,
       "_data_uncertainty": 0.0
     },
     "Kamarajar|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 33101.82498340103,
+      "import_volume": 34666.581048649634,
       "export_volume": 0.0,
-      "vessel_calls": 0.7777777777777778,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.8666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.23095238095238096,
+      "_congestion_pctile": 0.32407407407407407,
       "_data_uncertainty": 0.0
     },
     "Kamarajar|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 33101.82498340103,
+      "import_volume": 34666.581048649634,
       "export_volume": 0.0,
-      "vessel_calls": 0.7777777777777778,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.8666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.23095238095238096,
+      "_congestion_pctile": 0.32407407407407407,
       "_data_uncertainty": 0.0
     },
     "Paradip|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
-      "import_volume": 44106.8137981682,
-      "export_volume": 52084.878861103876,
-      "vessel_calls": 3.185185185185185,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
+      "import_volume": 41536.18234752271,
+      "export_volume": 49363.46091129458,
+      "vessel_calls": 2.8,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.8714285714285714,
+      "_congestion_pctile": 0.7962962962962963,
       "_data_uncertainty": 0.0
     },
     "Paradip|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 44106.8137981682,
-      "export_volume": 52084.878861103876,
-      "vessel_calls": 3.185185185185185,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "import_volume": 41536.18234752271,
+      "export_volume": 49363.46091129458,
+      "vessel_calls": 2.8,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.8714285714285714,
+      "_congestion_pctile": 0.7962962962962963,
       "_data_uncertainty": 0.0
     },
     "Paradip|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 44106.8137981682,
-      "export_volume": 52084.878861103876,
-      "vessel_calls": 3.185185185185185,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "import_volume": 41536.18234752271,
+      "export_volume": 49363.46091129458,
+      "vessel_calls": 2.8,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.8714285714285714,
+      "_congestion_pctile": 0.7962962962962963,
       "_data_uncertainty": 0.0
     },
     "Sagar Sandheads|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Sagar Sandheads|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Sagar Sandheads|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
       "import_volume": 0.0,
       "export_volume": 0.0,
       "vessel_calls": 0.0,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 0.0,
       "_congestion_pctile": 0.5,
       "_data_uncertainty": 1.0
     },
     "Tuticorin|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
-      "import_volume": 23545.835716634087,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
+      "import_volume": 26196.880177616476,
       "export_volume": 0.0,
-      "vessel_calls": 0.9629629629629629,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.9666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.34523809523809523,
+      "_congestion_pctile": 0.39351851851851855,
       "_data_uncertainty": 0.0
     },
     "Tuticorin|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 23545.835716634087,
+      "import_volume": 26196.880177616476,
       "export_volume": 0.0,
-      "vessel_calls": 0.9629629629629629,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.9666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.34523809523809523,
+      "_congestion_pctile": 0.39351851851851855,
       "_data_uncertainty": 0.0
     },
     "Tuticorin|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 23545.835716634087,
+      "import_volume": 26196.880177616476,
       "export_volume": 0.0,
-      "vessel_calls": 0.9629629629629629,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "vessel_calls": 0.9666666666666667,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.34523809523809523,
+      "_congestion_pctile": 0.39351851851851855,
       "_data_uncertainty": 0.0
     },
     "Visakhapatnam|Bulk Minerals & Ores": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
-      "trade_signal_lag1": 0.0,
-      "trade_signal_yoy_growth": -1.0,
-      "has_trade_signal": 0.0,
-      "import_volume": 55078.41499643264,
-      "export_volume": 30700.09344072779,
-      "vessel_calls": 3.2222222222222223,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
+      "trade_signal_lag1": 34109.38000000002,
+      "trade_signal_yoy_growth": 0.04064439055702129,
+      "has_trade_signal": 1.0,
+      "import_volume": 67523.02297452485,
+      "export_volume": 29181.883587376713,
+      "vessel_calls": 3.4,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.8785714285714286,
+      "_congestion_pctile": 0.9212962962962963,
       "_data_uncertainty": 0.0
     },
     "Visakhapatnam|Coal": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 55078.41499643264,
-      "export_volume": 30700.09344072779,
-      "vessel_calls": 3.2222222222222223,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "import_volume": 67523.02297452485,
+      "export_volume": 29181.883587376713,
+      "vessel_calls": 3.4,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.8785714285714286,
+      "_congestion_pctile": 0.9212962962962963,
       "_data_uncertainty": 0.0
     },
     "Visakhapatnam|Iron Ore": {
-      "bdry_lag1": 12.692483901977539,
-      "bdry_lag2": 12.070499928792318,
-      "bdry_lag3": 12.580096706267327,
-      "bdry_rolling_3m_avg": 12.447693512345728,
-      "brent_lag1": 83.32677419354839,
+      "bdry_lag1": 8.884516146875196,
+      "bdry_lag2": 9.268333339691162,
+      "bdry_lag3": 9.81774200931672,
+      "bdry_rolling_3m_avg": 9.323530498627692,
+      "brent_lag1": 93.31903225806451,
       "trade_signal_lag1": 0.0,
       "trade_signal_yoy_growth": 0.0,
       "has_trade_signal": 0.0,
-      "import_volume": 55078.41499643264,
-      "export_volume": 30700.09344072779,
-      "vessel_calls": 3.2222222222222223,
-      "month_num": 8.0,
-      "quarter": 3.0,
+      "import_volume": 67523.02297452485,
+      "export_volume": 29181.883587376713,
+      "vessel_calls": 3.4,
+      "month_num": 11.0,
+      "quarter": 4.0,
       "has_portwatch_coverage": 1.0,
-      "_congestion_pctile": 0.8785714285714286,
+      "_congestion_pctile": 0.9212962962962963,
       "_data_uncertainty": 0.0
     }
-  },
-  "congestion_feature_source_month": {
-    "Chennai|Bulk Minerals & Ores": "2024-10-01",
-    "Chennai|Coal": "2024-10-01",
-    "Chennai|Iron Ore": "2024-10-01",
-    "Dhamra|Bulk Minerals & Ores": null,
-    "Dhamra|Coal": null,
-    "Dhamra|Iron Ore": null,
-    "Gangavaram|Bulk Minerals & Ores": null,
-    "Gangavaram|Coal": null,
-    "Gangavaram|Iron Ore": null,
-    "Gopalpur|Bulk Minerals & Ores": null,
-    "Gopalpur|Coal": null,
-    "Gopalpur|Iron Ore": null,
-    "Haldia|Bulk Minerals & Ores": "2024-10-01",
-    "Haldia|Coal": "2024-10-01",
-    "Haldia|Iron Ore": "2024-10-01",
-    "Kamarajar|Bulk Minerals & Ores": "2024-10-01",
-    "Kamarajar|Coal": "2024-10-01",
-    "Kamarajar|Iron Ore": "2024-10-01",
-    "Paradip|Bulk Minerals & Ores": "2024-10-01",
-    "Paradip|Coal": "2024-10-01",
-    "Paradip|Iron Ore": "2024-10-01",
-    "Sagar Sandheads|Bulk Minerals & Ores": null,
-    "Sagar Sandheads|Coal": null,
-    "Sagar Sandheads|Iron Ore": null,
-    "Tuticorin|Bulk Minerals & Ores": "2024-10-01",
-    "Tuticorin|Coal": "2024-10-01",
-    "Tuticorin|Iron Ore": "2024-10-01",
-    "Visakhapatnam|Bulk Minerals & Ores": "2024-10-01",
-    "Visakhapatnam|Coal": "2024-10-01",
-    "Visakhapatnam|Iron Ore": "2024-10-01"
   },
   "risk_classes": [
     "low",
@@ -904,8 +872,8 @@
     "high"
   ],
   "risk_thresholds": [
-    0.43359567901234564,
-    0.5876311728395062
+    0.43296296296296294,
+    0.5933249158249159
   ],
   "risk_weights": {
     "volatility": 0.35,
@@ -916,57 +884,57 @@
   },
   "risk_methodology": "hybrid_score: volatility+rate_shock+trend_deviation+port_congestion+data_uncertainty, each percentile-ranked against training-period distribution, weighted-summed, then bucketed at train-only tertiles. (2026-09 fix) Classifier switched from plain RandomForestClassifier on the bucketed label to OrdinalRiskClassifier (regresses the continuous risk_score, buckets only the final prediction) after 'medium' measured 0% precision/recall under the old approach in the holdout and every walk-forward fold; has_portwatch_coverage/_congestion_pctile/_data_uncertainty were also added to the feature list (previously computed but unused by the model).",
   "metrics": {
-    "forecast_mae": 3.2698,
-    "risk_accuracy": 0.25,
-    "risk_balanced_accuracy": 0.3052,
-    "risk_macro_f1": 0.2454,
-    "risk_weighted_f1": 0.3049,
+    "forecast_mae": 5.7803,
+    "risk_accuracy": 0.4545,
+    "risk_balanced_accuracy": 0.4759,
+    "risk_macro_f1": 0.363,
+    "risk_weighted_f1": 0.3504,
     "risk_per_class": {
       "low": {
-        "precision": 1.0,
-        "recall": 0.2727,
-        "f1": 0.4286,
-        "support_in_test": 330
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support_in_test": 117
       },
       "medium": {
-        "precision": 0.1667,
-        "recall": 0.1429,
-        "f1": 0.1538,
-        "support_in_test": 210
+        "precision": 0.5294,
+        "recall": 0.4865,
+        "f1": 0.507,
+        "support_in_test": 111
       },
       "high": {
-        "precision": 0.0909,
-        "recall": 0.5,
-        "f1": 0.1538,
-        "support_in_test": 60
+        "precision": 0.4211,
+        "recall": 0.9412,
+        "f1": 0.5818,
+        "support_in_test": 102
       }
     },
     "risk_classes_missing_from_test": [],
     "risk_train_class_counts": {
-      "low": 795,
-      "medium": 756,
-      "high": 819
+      "low": 432,
+      "medium": 399,
+      "high": 459
     },
     "risk_test_class_counts": {
-      "low": 330,
-      "medium": 210,
-      "high": 60
+      "low": 117,
+      "medium": 111,
+      "high": 102
     },
     "risk_confusion_matrix": [
       [
-        90,
-        120,
-        120
+        0,
+        42,
+        75
       ],
       [
         0,
-        30,
-        180
+        54,
+        57
       ],
       [
         0,
-        30,
-        30
+        6,
+        96
       ]
     ],
     "risk_confusion_matrix_labels": [
@@ -977,44 +945,44 @@
     "risk_walk_forward_cv": {
       "status": "ok",
       "methodology": "Expanding-window walk-forward CV, run in addition to (not instead of) the primary 80/20 chronological holdout above. Each fold refits its own low/medium/high tertile thresholds, one-hot encoder, and RandomForestClassifier on that fold's own training window only. See risk_walk_forward_cv() docstring in train.py for the one disclosed leakage caveat (risk_score's percentile inputs are not refit per fold).",
-      "n_folds": 4,
+      "n_folds": 2,
       "risk_model_architecture": "OrdinalRiskClassifier (RandomForestRegressor on continuous risk_score, bucketed at fold-local train-only q1/q2 thresholds) \u2014 see ordinal_risk_model.py. Replaced a plain RandomForestClassifier (2026-09 fix) after it scored 0% precision/recall on 'medium' in every fold.",
       "folds": [
         {
           "fold": 1,
           "train_period": {
             "start": "2018-06-01",
-            "end": "2022-08-01"
+            "end": "2020-11-01"
           },
           "test_period": {
-            "start": "2022-09-01",
-            "end": "2023-08-01"
+            "start": "2020-12-01",
+            "end": "2021-11-01"
           },
           "test_class_counts": {
-            "low": 78,
-            "medium": 144,
-            "high": 138
+            "low": 93,
+            "medium": 48,
+            "high": 219
           },
-          "accuracy": 0.425,
-          "balanced_accuracy": 0.419,
+          "accuracy": 0.45,
+          "balanced_accuracy": 0.3146,
           "per_class": {
             "low": {
-              "precision": 0.2703,
-              "recall": 0.3846,
-              "f1": 0.3175,
-              "support_in_test": 78
+              "precision": 0.275,
+              "recall": 0.3548,
+              "f1": 0.3099,
+              "support_in_test": 93
             },
             "medium": {
-              "precision": 0.3818,
-              "recall": 0.4375,
-              "f1": 0.4078,
-              "support_in_test": 144
+              "precision": 0.0,
+              "recall": 0.0,
+              "f1": 0.0,
+              "support_in_test": 48
             },
             "high": {
-              "precision": 0.7143,
-              "recall": 0.4348,
-              "f1": 0.5405,
-              "support_in_test": 138
+              "precision": 0.8776,
+              "recall": 0.589,
+              "f1": 0.7049,
+              "support_in_test": 219
             }
           }
         },
@@ -1022,113 +990,37 @@
           "fold": 2,
           "train_period": {
             "start": "2018-06-01",
-            "end": "2023-08-01"
+            "end": "2021-11-01"
           },
           "test_period": {
-            "start": "2023-09-01",
-            "end": "2024-08-01"
+            "start": "2021-12-01",
+            "end": "2022-11-01"
           },
           "test_class_counts": {
-            "low": 186,
-            "medium": 66,
-            "high": 108
+            "low": 105,
+            "medium": 156,
+            "high": 99
           },
-          "accuracy": 0.3833,
-          "balanced_accuracy": 0.4758,
+          "accuracy": 0.3667,
+          "balanced_accuracy": 0.4038,
           "per_class": {
             "low": {
-              "precision": 0.7273,
-              "recall": 0.2581,
-              "f1": 0.381,
-              "support_in_test": 186
-            },
-            "medium": {
-              "precision": 0.2184,
-              "recall": 0.8636,
-              "f1": 0.3486,
-              "support_in_test": 66
-            },
-            "high": {
-              "precision": 1.0,
-              "recall": 0.3056,
-              "f1": 0.4681,
-              "support_in_test": 108
-            }
-          }
-        },
-        {
-          "fold": 3,
-          "train_period": {
-            "start": "2018-06-01",
-            "end": "2024-08-01"
-          },
-          "test_period": {
-            "start": "2024-09-01",
-            "end": "2025-08-01"
-          },
-          "test_class_counts": {
-            "low": 132,
-            "medium": 228,
-            "high": 0
-          },
-          "accuracy": 0.125,
-          "balanced_accuracy": 0.1657,
-          "per_class": {
-            "low": {
-              "precision": 0.7,
-              "recall": 0.3182,
-              "f1": 0.4375,
-              "support_in_test": 132
-            },
-            "medium": {
-              "precision": 1.0,
-              "recall": 0.0132,
-              "f1": 0.026,
-              "support_in_test": 228
-            },
-            "high": {
               "precision": 0.0,
               "recall": 0.0,
               "f1": 0.0,
-              "support_in_test": 0
-            }
-          }
-        },
-        {
-          "fold": 4,
-          "train_period": {
-            "start": "2018-06-01",
-            "end": "2025-08-01"
-          },
-          "test_period": {
-            "start": "2025-09-01",
-            "end": "2026-08-01"
-          },
-          "test_class_counts": {
-            "low": 270,
-            "medium": 60,
-            "high": 30
-          },
-          "accuracy": 0.3333,
-          "balanced_accuracy": 0.2778,
-          "per_class": {
-            "low": {
-              "precision": 1.0,
-              "recall": 0.3333,
-              "f1": 0.5,
-              "support_in_test": 270
+              "support_in_test": 105
             },
             "medium": {
-              "precision": 0.1923,
-              "recall": 0.5,
-              "f1": 0.2778,
-              "support_in_test": 60
+              "precision": 0.55,
+              "recall": 0.2115,
+              "f1": 0.3056,
+              "support_in_test": 156
             },
             "high": {
-              "precision": 0.0,
-              "recall": 0.0,
-              "f1": 0.0,
-              "support_in_test": 30
+              "precision": 0.33,
+              "recall": 1.0,
+              "f1": 0.4962,
+              "support_in_test": 99
             }
           }
         }
@@ -1136,19 +1028,19 @@
       "aggregated_across_folds": {
         "confusion_matrix": [
           [
-            210,
-            270,
-            186
+            33,
+            87,
+            78
           ],
           [
-            96,
-            153,
-            249
+            30,
+            33,
+            141
           ],
           [
-            21,
-            162,
-            93
+            57,
+            33,
+            228
           ]
         ],
         "confusion_matrix_labels": [
@@ -1158,146 +1050,142 @@
         ],
         "per_class": {
           "low": {
-            "precision": 0.6422,
-            "recall": 0.3153,
-            "f1": 0.423,
-            "support_across_folds": 666
+            "precision": 0.275,
+            "recall": 0.1667,
+            "f1": 0.2075,
+            "support_across_folds": 198
           },
           "medium": {
-            "precision": 0.2615,
-            "recall": 0.3072,
-            "f1": 0.2825,
-            "support_across_folds": 498
+            "precision": 0.2157,
+            "recall": 0.1618,
+            "f1": 0.1849,
+            "support_across_folds": 204
           },
           "high": {
-            "precision": 0.1761,
-            "recall": 0.337,
-            "f1": 0.2313,
-            "support_across_folds": 276
+            "precision": 0.5101,
+            "recall": 0.717,
+            "f1": 0.5961,
+            "support_across_folds": 318
           }
         }
       }
     },
     "baseline_comparison": {
       "test_period": {
-        "start": "2025-01-01",
-        "end": "2026-08-01"
+        "start": "2022-01-01",
+        "end": "2022-11-01"
       },
-      "test_row_count": 600,
+      "test_row_count": 330,
       "baselines": {
         "naive_persistence": {
           "name": "naive_persistence",
-          "mae": 1.1456,
-          "rmse": 1.4787,
-          "mape_pct": 11.7455
+          "mae": 3.4627,
+          "rmse": 4.5651,
+          "mape_pct": 27.3132
         },
         "moving_average_3m": {
           "name": "moving_average_3m",
-          "mae": 1.4496,
-          "rmse": 1.7091,
-          "mape_pct": 14.9093
+          "mae": 4.8889,
+          "rmse": 6.1393,
+          "mape_pct": 42.217
         }
       },
       "model": {
         "name": "random_forest_delta_vs_bdry_lag1",
-        "mae": 3.2698,
-        "rmse": 3.6783,
-        "mape_pct": 38.3451
+        "mae": 5.7803,
+        "rmse": 6.78,
+        "mape_pct": 43.6838
       },
-      "improvement_pct_vs_naive_persistence": -185.42,
-      "improvement_pct_vs_moving_average_3m": -125.57,
-      "model_beats_baseline": false
+      "improvement_pct_vs_naive_persistence": -66.93,
+      "improvement_pct_vs_moving_average_3m": -18.23
     },
     "horizon_metrics": {
       "1": {
         "test_period": {
-          "start": "2025-01-01",
-          "end": "2026-08-01"
+          "start": "2022-01-01",
+          "end": "2022-11-01"
         },
-        "test_row_count": 600,
+        "test_row_count": 330,
         "baselines": {
           "naive_persistence": {
             "name": "naive_persistence",
-            "mae": 1.1456,
-            "rmse": 1.4787,
-            "mape_pct": 11.7455
+            "mae": 3.4627,
+            "rmse": 4.5651,
+            "mape_pct": 27.3132
           },
           "moving_average_3m": {
             "name": "moving_average_3m",
-            "mae": 1.4496,
-            "rmse": 1.7091,
-            "mape_pct": 14.9093
+            "mae": 4.8889,
+            "rmse": 6.1393,
+            "mape_pct": 42.217
           }
         },
         "model": {
           "name": "random_forest_delta_vs_bdry_lag1",
-          "mae": 3.2698,
-          "rmse": 3.6783,
-          "mape_pct": 38.3451
+          "mae": 5.7803,
+          "rmse": 6.78,
+          "mape_pct": 43.6838
         },
-        "improvement_pct_vs_naive_persistence": -185.42,
-        "improvement_pct_vs_moving_average_3m": -125.57,
-        "model_beats_baseline": false
+        "improvement_pct_vs_naive_persistence": -66.93,
+        "improvement_pct_vs_moving_average_3m": -18.23
       },
       "2": {
         "test_period": {
-          "start": "2025-01-01",
-          "end": "2026-07-01"
+          "start": "2022-01-01",
+          "end": "2022-11-01"
         },
-        "test_row_count": 570,
+        "test_row_count": 330,
         "baselines": {
           "naive_persistence": {
             "name": "naive_persistence",
-            "mae": 1.4932,
-            "rmse": 1.7685,
-            "mape_pct": 15.0527
+            "mae": 4.439,
+            "rmse": 6.1526,
+            "mape_pct": 40.0068
           },
           "moving_average_3m": {
             "name": "moving_average_3m",
-            "mae": 1.848,
-            "rmse": 2.0781,
-            "mape_pct": 18.5123
+            "mae": 6.057,
+            "rmse": 7.4803,
+            "mape_pct": 56.5893
           }
         },
         "model": {
           "name": "random_forest_delta_vs_bdry_lag1_h2",
-          "mae": 6.0475,
-          "rmse": 6.8043,
-          "mape_pct": 66.8299
+          "mae": 8.239,
+          "rmse": 9.7214,
+          "mape_pct": 72.0111
         },
-        "improvement_pct_vs_naive_persistence": -305.0,
-        "improvement_pct_vs_moving_average_3m": -227.25,
-        "model_beats_baseline": false
+        "improvement_pct_vs_naive_persistence": -85.6,
+        "improvement_pct_vs_moving_average_3m": -36.02
       },
       "3": {
         "test_period": {
-          "start": "2025-01-01",
-          "end": "2026-06-01"
+          "start": "2022-01-01",
+          "end": "2022-11-01"
         },
-        "test_row_count": 540,
+        "test_row_count": 330,
         "baselines": {
           "naive_persistence": {
             "name": "naive_persistence",
-            "mae": 1.8341,
-            "rmse": 2.1365,
-            "mape_pct": 17.7748
+            "mae": 6.0161,
+            "rmse": 7.7503,
+            "mape_pct": 57.8255
           },
           "moving_average_3m": {
             "name": "moving_average_3m",
-            "mae": 2.2991,
-            "rmse": 2.5099,
-            "mape_pct": 23.0731
+            "mae": 7.7035,
+            "rmse": 8.9608,
+            "mape_pct": 75.3524
           }
         },
         "model": {
           "name": "random_forest_delta_vs_bdry_lag1_h3",
-          "mae": 4.6772,
-          "rmse": 5.0243,
-          "mape_pct": 50.0099
+          "mae": 9.7228,
+          "rmse": 11.2102,
+          "mape_pct": 91.647
         },
-        "improvement_pct_vs_naive_persistence": -155.01,
-        "improvement_pct_vs_moving_average_3m": -103.44,
-        "model_beats_baseline": false
+        "improvement_pct_vs_naive_persistence": -61.61,
+        "improvement_pct_vs_moving_average_3m": -26.21
       }
     },
     "horizons_available": [
@@ -1318,35 +1206,35 @@
   "forecast_feature_importance": [
     {
       "feature": "bdry_lag3",
-      "importance": 0.2934
-    },
-    {
-      "feature": "brent_lag1",
-      "importance": 0.2517
+      "importance": 0.3716
     },
     {
       "feature": "month_num",
-      "importance": 0.1578
+      "importance": 0.1977
     },
     {
-      "feature": "bdry_lag1",
-      "importance": 0.1274
-    },
-    {
-      "feature": "bdry_lag2",
-      "importance": 0.0923
-    },
-    {
-      "feature": "bdry_rolling_3m_avg",
-      "importance": 0.0558
+      "feature": "brent_lag1",
+      "importance": 0.1549
     },
     {
       "feature": "quarter",
-      "importance": 0.0216
+      "importance": 0.1365
+    },
+    {
+      "feature": "bdry_lag1",
+      "importance": 0.0768
+    },
+    {
+      "feature": "bdry_lag2",
+      "importance": 0.0445
+    },
+    {
+      "feature": "bdry_rolling_3m_avg",
+      "importance": 0.0179
     },
     {
       "feature": "trade_signal_lag1",
-      "importance": 0.0
+      "importance": 0.0001
     },
     {
       "feature": "trade_signal_yoy_growth",
@@ -1435,71 +1323,71 @@
   ],
   "risk_feature_importance": [
     {
-      "feature": "brent_lag1",
-      "importance": 0.2017
-    },
-    {
-      "feature": "bdry_lag3",
-      "importance": 0.1821
+      "feature": "bdry_lag2",
+      "importance": 0.27
     },
     {
       "feature": "month_num",
-      "importance": 0.1732
+      "importance": 0.1435
     },
     {
-      "feature": "bdry_lag2",
-      "importance": 0.1153
-    },
-    {
-      "feature": "_congestion_pctile",
-      "importance": 0.1146
-    },
-    {
-      "feature": "bdry_lag1",
-      "importance": 0.1038
+      "feature": "brent_lag1",
+      "importance": 0.1377
     },
     {
       "feature": "bdry_rolling_3m_avg",
-      "importance": 0.0473
+      "importance": 0.1175
+    },
+    {
+      "feature": "_congestion_pctile",
+      "importance": 0.1165
+    },
+    {
+      "feature": "bdry_lag1",
+      "importance": 0.079
     },
     {
       "feature": "quarter",
-      "importance": 0.0313
+      "importance": 0.0771
+    },
+    {
+      "feature": "bdry_lag3",
+      "importance": 0.0251
     },
     {
       "feature": "vessel_calls",
-      "importance": 0.0075
-    },
-    {
-      "feature": "port_Haldia",
-      "importance": 0.006
-    },
-    {
-      "feature": "import_volume",
-      "importance": 0.0055
+      "importance": 0.0082
     },
     {
       "feature": "_data_uncertainty",
-      "importance": 0.0039
+      "importance": 0.007
     },
     {
-      "feature": "export_volume",
-      "importance": 0.0028
+      "feature": "import_volume",
+      "importance": 0.0054
+    },
+    {
+      "feature": "port_Haldia",
+      "importance": 0.0046
     },
     {
       "feature": "has_portwatch_coverage",
-      "importance": 0.0024
+      "importance": 0.0035
     },
     {
-      "feature": "port_Tuticorin",
-      "importance": 0.0008
-    },
-    {
-      "feature": "port_Chennai",
-      "importance": 0.0006
+      "feature": "export_volume",
+      "importance": 0.0027
     },
     {
       "feature": "port_Paradip",
+      "importance": 0.0007
+    },
+    {
+      "feature": "port_Chennai",
+      "importance": 0.0005
+    },
+    {
+      "feature": "port_Tuticorin",
       "importance": 0.0004
     },
     {
@@ -1511,12 +1399,12 @@
       "importance": 0.0002
     },
     {
-      "feature": "trade_signal_lag1",
+      "feature": "port_Kamarajar",
       "importance": 0.0001
     },
     {
-      "feature": "port_Kamarajar",
-      "importance": 0.0001
+      "feature": "trade_signal_lag1",
+      "importance": 0.0
     },
     {
       "feature": "has_trade_signal",
@@ -1553,68 +1441,68 @@
   ],
   "numeric_feature_stats": {
     "bdry_lag1": {
-      "mean": 14.37598368197899,
-      "std": 7.296630547423228
+      "mean": 16.28506207220223,
+      "std": 7.6173624345226
     },
     "bdry_lag2": {
-      "mean": 14.551878621828136,
-      "std": 7.301574819060626
+      "mean": 16.238105492387643,
+      "std": 7.577994695170614
     },
     "bdry_lag3": {
-      "mean": 14.742292505943922,
-      "std": 7.345200874673247
+      "mean": 15.968190712209445,
+      "std": 7.078700781321315
     },
     "bdry_rolling_3m_avg": {
-      "mean": 14.556718269917017,
-      "std": 7.087837979024065
+      "mean": 16.163786092266438,
+      "std": 7.173957777997179
     },
     "brent_lag1": {
-      "mean": 73.36227215692743,
-      "std": 19.24927812379349
+      "mean": 61.09984635937309,
+      "std": 14.785591160568988
     },
     "trade_signal_lag1": {
-      "mean": 9679.856497890296,
-      "std": 15000.136962469574
+      "mean": 7140.053255813953,
+      "std": 10661.191225204857
     },
     "trade_signal_yoy_growth": {
-      "mean": 0.0463812734316762,
-      "std": 0.2571764869586878
+      "mean": 0.03297038777909892,
+      "std": 0.2250731375510837
     },
     "has_trade_signal": {
       "mean": 0.3333333333333333,
-      "std": 0.4715040047049368
+      "std": 0.47158734201985203
     },
     "import_volume": {
-      "mean": 16161.742009051924,
-      "std": 21841.431349001858
+      "mean": 14364.135188227221,
+      "std": 20461.272003862072
     },
     "export_volume": {
-      "mean": 7568.668806352634,
-      "std": 17466.24583772546
+      "mean": 6458.950617190466,
+      "std": 14808.143791760978
     },
     "vessel_calls": {
-      "mean": 0.9332111420357151,
-      "std": 1.2115998987362142
+      "mean": 0.8487619934540285,
+      "std": 1.1596479925922756
     },
     "month_num": {
-      "mean": 6.7215189873417724,
-      "std": 3.4241588572916095
+      "mean": 6.906976744186046,
+      "std": 3.389487376802537
     },
     "quarter": {
-      "mean": 2.569620253164557,
-      "std": 1.1104121090914043
+      "mean": 2.627906976744186,
+      "std": 1.1006011999926668
     },
     "has_portwatch_coverage": {
-      "mean": 0.5316455696202531,
-      "std": 0.4991028600950272
+      "mean": 0.5023255813953489,
+      "std": 0.5001885007404064
     },
     "_congestion_pctile": {
-      "mean": 0.501913803496082,
-      "std": 0.20989013533749615
+      "mean": 0.5024655469422911,
+      "std": 0.20386066064505176
     },
     "_data_uncertainty": {
-      "mean": 0.46835443037974683,
-      "std": 0.4991028600950272
+      "mean": 0.49767441860465117,
+      "std": 0.5001885007404064
     }
   }
 }

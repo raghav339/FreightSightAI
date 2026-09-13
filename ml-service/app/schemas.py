@@ -121,22 +121,10 @@ class ForecastResponse(BaseModel):
 
     vessel_status: str = "RECOMMENDED_VESSEL"
     vessel_rejection_reason: Optional[str] = None
-    # Each dict includes the raw vessel/spec fields plus:
-    #   "feasible": False
-    #   "rejection_reason": <str>            (legacy flat message, kept for older consumers)
-    #   "reasons": [{"type": <str>, "message": <str>}]
-    # `type` is one of: "cargo_capacity", "draft", "loa", "beam",
-    # "origin_compatibility", "destination_compatibility" — the actual
-    # failed constraint, not inferred from the message text.
     rejected_vessel_types: list[dict] = []
 
     
     forecast_curve: list[dict] = []
-    # Actual historical route freight (month/value pairs), populated only
-    # when forecast_type is a route-based type (synthetic_route /
-    # route_specific / observed_route) — empty for BDRY market-proxy
-    # forecasts, where the dashboard's bdry_history_12m is the history to use.
-    route_history: list[dict] = []
 
    
     forecast_type: str = "market_proxy"
@@ -155,26 +143,6 @@ class ForecastResponse(BaseModel):
     forecast_source: str = "BDRY historical market series"
     latest_feature_date: Optional[str] = None
     risk_reliability: str = "medium"
-
-    # BUGFIX: these three were already computed in ModelBundle.predict
-    # (utils.py) but never declared here, so FastAPI's response_model
-    # filtering silently dropped them before they left the ML service —
-    # Express and the frontend never saw them at all.
-    route_model_available: bool = False
-    route_model_beats_baseline: Optional[bool] = None
-    route_model_fallback_note: Optional[str] = None
-
-    # Same guardrail pattern as the route_model_* fields above, but for the
-    # BDRY market-proxy forecast itself (see ModelBundle._core_forecast /
-    # _forecast_curve in utils.py). forecast_model_beats_baseline is the raw
-    # held-out-data flag for the H+1 horizon; forecast_gated_to_naive_persistence
-    # is True when predicted_freight_rate_usd_per_ton (and forecast_curve's
-    # H+1 point) were replaced with the naive-persistence value because that
-    # flag was False. Declared here so FastAPI's response_model filtering
-    # doesn't silently drop them the way route_model_* was before.
-    forecast_model_beats_baseline: Optional[bool] = None
-    forecast_gated_to_naive_persistence: bool = False
-    forecast_fallback_note: Optional[str] = None
     recommended_vessel_reason: str = ""
     port_data_warning: Optional[str] = None
 
@@ -182,10 +150,7 @@ class ForecastResponse(BaseModel):
     # cargo_volume_cbm / shipment_mode (see ModelBundle.predict in utils.py)
     # rather than being accepted-but-unused fields. transit_distance_source
     # is one of "user_provided" (distance_km was supplied), "route_table"
-    # (fell back to the indicative static distance table), "geodesic_estimate"
-    # (route pair wasn't in the table; distance estimated from great-circle
-    # distance adjusted by the origin's own empirical detour ratio — see
-    # port_utils.get_distance_source), or "unavailable".
+    # (fell back to the indicative static distance table), or "unavailable".
     estimated_transit_days: Optional[float] = None
     transit_distance_source: str = "unavailable"
     transit_note: Optional[str] = None

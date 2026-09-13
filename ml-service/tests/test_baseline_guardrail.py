@@ -142,8 +142,8 @@ class _FakeRouteFreight:
     def __init__(self, beats_baseline):
         self._beats_baseline = beats_baseline
 
-        def predict(self,origin,destination,shipment_date,commodity=None,cargo_size_t=None,vessel_class=None,):        
-            return {
+    def predict(self, origin, destination, when, route_id=None, commodity=None):
+        return {
             "forecast_type": "route_specific",
             "data_confidence": "medium",
             "route": f"{origin}-{destination}",

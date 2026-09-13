@@ -58,35 +58,12 @@ async function main() {
   // Existing production databases are not changed by `CREATE TABLE IF NOT EXISTS`.
   // Keep the startup migration idempotent so new application fields are added
   // without requiring the user to drop/recreate the database.
-  //
-  // Keep this in sync with MYSQL_COLUMN_MIGRATIONS in db/index.js (the
-  // on-every-boot equivalent) and with schema.sql: any column added to one
-  // needs an entry in both, or an old Aiven/MySQL database will start
-  // throwing "Unknown column" on /forecast, history, PDF export, or alerts.
   const migrations = [
-    // --- user ownership: forecasts tied to a logged-in account ---
-    ["forecast_requests", "user_id", "INT NULL"],
-    // --- COA (Charter-of-Affreightment) multi-voyage contracting inputs ---
     ["forecast_requests", "contract_duration_months", "DECIMAL(6,2) NULL"],
     ["forecast_requests", "total_program_tons", "DECIMAL(14,2) NULL"],
-    // --- route/forecast metadata: proxy vs. route-specific transparency ---
-    ["forecast_results", "forecast_type", "VARCHAR(30) NULL"],
-    ["forecast_results", "data_confidence", "VARCHAR(20) NULL"],
-    ["forecast_results", "data_source_level", "VARCHAR(30) NULL"],
-    // --- explainability: why the model produced this forecast ---
-    ["forecast_results", "feature_importance", "JSON NULL"],
-    ["forecast_results", "top_drivers", "JSON NULL"],
-    // --- genuine multi-horizon forecast curve (H+1/H+2/H+3) ---
-    ["forecast_results", "forecast_curve", "JSON NULL"],
-    // --- both-port vessel feasibility outcome ---
-    ["forecast_results", "vessel_status", "VARCHAR(60) NULL"],
-    ["forecast_results", "vessel_rejection_reason", "VARCHAR(300) NULL"],
-    ["forecast_results", "rejected_vessel_types", "JSON NULL"],
-    // --- decision-quality vessel explanation + port-data disclaimer ---
+    ["forecast_requests", "user_id", "INT NULL"],
     ["forecast_results", "recommended_vessel_reason", "TEXT NULL"],
     ["forecast_results", "port_data_warning", "TEXT NULL"],
-    // --- alert ownership: scope alerts to the user who triggered them ---
-    ["alerts", "user_id", "INT NULL"],
   ];
 
   for (const [tableName, columnName, definition] of migrations) {
@@ -107,36 +84,6 @@ async function main() {
       // Another instance may have added the column between the information_schema
       // check and ALTER TABLE. Treat duplicate-column errors as success.
       if (err.code !== "ER_DUP_FIELDNAME") throw err;
-    }
-  }
-
-  // FK constraints for the user-ownership columns above. Added separately
-  // from the column migration (and only after it, since the column must
-  // exist first) so a database that already has the column from an
-  // earlier partial deploy — but not the constraint — still ends up fully
-  // migrated instead of one failure skipping the other.
-  const fkMigrations = [
-    [
-      "forecast_requests",
-      "fk_forecast_requests_user_id",
-      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL",
-    ],
-    [
-      "alerts",
-      "fk_alerts_user_id",
-      "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE",
-    ],
-  ];
-
-  for (const [tableName, constraintName, definition] of fkMigrations) {
-    try {
-      await connection.query(
-        `ALTER TABLE \`${tableName}\` ADD CONSTRAINT \`${constraintName}\` ${definition}`
-      );
-      console.log(`Added missing MySQL FK ${constraintName} on ${tableName}`);
-    } catch (err) {
-      // ER_FK_DUP_NAME (1826) / ER_DUP_KEYNAME once already applied.
-      if (err.code !== "ER_FK_DUP_NAME" && err.code !== "ER_DUP_KEYNAME") throw err;
     }
   }
 

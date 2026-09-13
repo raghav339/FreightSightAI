@@ -101,12 +101,11 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
     console.error("ML service call failed:", err.message);
     await db
       .run(
-        `INSERT INTO alerts (route, alert_type, message, user_id) VALUES (?, ?, ?, ?)`,
+        `INSERT INTO alerts (route, alert_type, message) VALUES (?, ?, ?)`,
         [
           `${origin_port}-${destination_port}`,
           "volatility",
           `ML service unavailable for request #${requestId}`,
-          req.user?.id ?? null,
         ]
       )
       .catch(() => {});
@@ -178,14 +177,8 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
     // raise an alert automatically for high-risk routes
     if (mlResult.risk_label === "high") {
       await db.run(
-        `INSERT INTO alerts (route, alert_type, message, forecast_result_id, user_id) VALUES (?, ?, ?, ?, ?)`,
-        [
-          mlResult.route,
-          "high_risk",
-          `High risk detected on ${mlResult.route}: ${mlResult.summary}`,
-          resultId,
-          req.user?.id ?? null,
-        ]
+        `INSERT INTO alerts (route, alert_type, message, forecast_result_id) VALUES (?, ?, ?, ?)`,
+        [mlResult.route, "high_risk", `High risk detected on ${mlResult.route}: ${mlResult.summary}`, resultId]
       );
     }
   } catch (err) {
@@ -252,24 +245,6 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
     // which both already expect these two fields.
     recommended_vessel_reason: mlResult.recommended_vessel_reason ?? null,
     port_data_warning: mlResult.port_data_warning ?? null,
-
-    // BUGFIX: ML provenance fields — the ML service always computes these,
-    // but they were silently dropped here before reaching the frontend.
-    // ResultCards.jsx's "Forecast basis" / "Data quality" card already
-    // reads result.forecast_basis / forecast_source / training_data_mode /
-    // latest_feature_date / risk_reliability and was falling back to
-    // generic placeholder text because these never arrived. The
-    // route_model_* fields required a matching fix in ml-service's
-    // ForecastResponse schema (see schemas.py) since FastAPI's
-    // response_model was stripping them before they even left that service.
-    forecast_basis: mlResult.forecast_basis ?? null,
-    forecast_source: mlResult.forecast_source ?? null,
-    training_data_mode: mlResult.training_data_mode ?? null,
-    latest_feature_date: mlResult.latest_feature_date ?? null,
-    risk_reliability: mlResult.risk_reliability ?? null,
-    route_model_available: mlResult.route_model_available ?? false,
-    route_model_beats_baseline: mlResult.route_model_beats_baseline ?? null,
-    route_model_fallback_note: mlResult.route_model_fallback_note ?? null,
 
     // cargo_volume_cbm / distance_km / delay_days / shipment_mode are now
     // actually consumed by the decision engine (see ml-service/app/utils.py

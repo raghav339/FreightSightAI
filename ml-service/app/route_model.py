@@ -33,7 +33,6 @@ try:
     from app.ais_stream import collector as ais_collector
 except Exception:
     ais_collector = None
-from app.data_freshness import classify_ais_freshness
 
 ROOT = Path(__file__).resolve().parents[1] if Path(__file__).resolve().parent.name == "app" else Path(__file__).resolve().parent
 DATA = ROOT / "data" / "production"
@@ -104,18 +103,6 @@ def train(output_dir: str | Path | None = None):
         pred=model.predict(te[NUMERIC+CATEGORICAL])
         mae=float(mean_absolute_error(te[target],pred))
         rmse=float(math.sqrt(mean_squared_error(te[target],pred)))
-
-        # Baseline guardrail (same bar applied in train.py and
-        # route_freight_model.py): "next h months' proxy == current known
-        # bdry_proxy" (naive persistence, zero learned parameters). If this
-        # RandomForest can't beat that, its route-specific inputs (distance,
-        # AIS port activity) aren't earning their keep and callers should
-        # know that honestly rather than silently trusting the prediction.
-        naive_pred = te["bdry_proxy"].to_numpy()
-        naive_mae = float(mean_absolute_error(te[target], naive_pred))
-        naive_rmse = float(math.sqrt(mean_squared_error(te[target], naive_pred)))
-        beats_naive = mae < naive_mae
-
         joblib.dump(model,out/f"route_model_h{h}.joblib")
         artifacts[h]=model
         metrics[str(h)]={
@@ -123,33 +110,9 @@ def train(output_dir: str | Path | None = None):
             "test_period":{"start":str(te.month.min().date()),"end":str(te.month.max().date())},
             "mae_proxy_points":round(mae,4),
             "rmse_proxy_points":round(rmse,4),
-            "naive_mae_proxy_points":round(naive_mae,4),
-            "naive_rmse_proxy_points":round(naive_rmse,4),
-            "improvement_pct_vs_naive_persistence":round((naive_mae-mae)/naive_mae*100,2) if naive_mae else None,
-            "beats_naive_persistence":beats_naive,
-            # Alias matching the field name route_freight_model.py and
-            # app/utils.py already gate on, so callers can check one
-            # consistent key regardless of which route model answered.
-            "model_beats_baseline":beats_naive,
             "target":"next_h_month_bdry_market_proxy",
         }
     latest=df.sort_values("month").iloc[-1]["month"]
-    total=len(metrics)
-    failing=[h for h,m in metrics.items() if not m["model_beats_baseline"]]
-    print("="*78)
-    print("ROUTE MODEL (AIS-enhanced market proxy): baseline comparison (model vs. naive persistence)")
-    print("="*78)
-    for h,m in sorted(metrics.items(), key=lambda kv: int(kv[0])):
-        status = "PASS" if m["model_beats_baseline"] else "FAIL — DOES NOT BEAT NAIVE PERSISTENCE"
-        print(f"[{status}] H+{h}: model MAE={m['mae_proxy_points']} | naive MAE={m['naive_mae_proxy_points']} "
-              f"(n={m['test_rows']}, {m['test_period']['start']}..{m['test_period']['end']})")
-    print("-"*78)
-    if failing:
-        print(f"WARNING: {len(failing)}/{total} horizon(s) FAILED to beat naive persistence on held-out data. "
-              "Callers should not silently trust these horizons — see model_beats_baseline in the metadata/response.")
-    else:
-        print(f"All {total} horizon(s) beat naive persistence on held-out data.")
-    print("="*78)
     meta={
         "model_type":"AIS-enhanced route-level dry-bulk market proxy",
         "target_definition":"future BDRY ETF price proxy, NOT USD/ton freight rate",
@@ -160,12 +123,6 @@ def train(output_dir: str | Path | None = None):
         "origins":ORIGINS,"destinations":DESTINATIONS,
         "numeric_features":NUMERIC,"categorical_features":CATEGORICAL,
         "metrics":metrics,
-        "baseline_summary":{
-            "total_horizon_models":total,
-            "passed":total-len(failing),
-            "failed":len(failing),
-            "failed_horizons":[f"H+{h}" for h in failing],
-        },
         "calibration":"If current_spot_rate_usd_per_ton is provided, projected_rate = spot_rate * predicted_proxy/current_proxy.",
         "direct_ais_status":"AISStream live integration available; PortWatch remains the historical AIS-derived training fallback when live events are unavailable.",
     }
@@ -188,30 +145,7 @@ class RouteModel:
             self.bdry["month"]=self.bdry["date"].dt.to_period("M").dt.to_timestamp()
             self.bdry=self.bdry.groupby("month",as_index=False)["bdry_close"].mean().rename(columns={"bdry_close":"bdry_proxy"})
 
-    def _query_live_ais(self, origin, destination):
-        """Best-effort live AISStream query for this route. Returns None if
-        the collector isn't configured/enabled or the query fails — callers
-        must not assume a None result means "no traffic", only "no live
-        data available right now" (see _ais_freshness for the distinction)."""
-        if ais_collector is not None and ais_collector.enabled:
-            try:
-                return ais_collector.route_features(origin, destination, lookback_hours=24)
-            except Exception:
-                return None
-        return None
-
-    def _ais_freshness(self, live):
-        """Classify how current this route's AIS/PortWatch features actually
-        are, against the real wall-clock date — never against the requested
-        shipment date (see app/data_freshness.py for why)."""
-        last_message_at = getattr(ais_collector, "last_message_at", None) if ais_collector is not None else None
-        return classify_ais_freshness(
-            live_ais=live,
-            ais_collector_last_message_at=last_message_at,
-            portwatch_latest_month=self.meta.get("latest_route_feature_month"),
-        )
-
-    def _row(self, origin, destination, when, live=None):
+    def _row(self, origin, destination, when):
         when=pd.Timestamp(when)
         exact=self.features[(self.features.origin==origin)&(self.features.destination==destination)]
         if exact.empty:
@@ -225,8 +159,10 @@ class RouteModel:
         row["month"]=when
         row["month_sin"]=math.sin(2*math.pi*when.month/12)
         row["month_cos"]=math.cos(2*math.pi*when.month/12)
-        if live is not None:
+        live=None
+        if ais_collector is not None and ais_collector.enabled:
             try:
+                live=ais_collector.route_features(origin, destination, lookback_hours=24)
                 o, d = live["origin"], live["destination"]
                 # Map live operational observations onto the same feature contract used
                 # by the model. These are deliberately inference-time overrides; they
@@ -244,14 +180,6 @@ class RouteModel:
         return pd.DataFrame([row]), source_month, live
 
     def predict(self, origin, destination, shipment_date, current_spot_rate_usd_per_ton=None, commodity=None):
-        # Freshness is assessed once per request and attached to every
-        # response path below — including the direct route-freight path,
-        # since route-level operational features (idle/congestion advice
-        # elsewhere) still depend on how current the AIS/PortWatch inputs
-        # actually are, independent of which model supplied the rate.
-        live = self._query_live_ais(origin, destination)
-        ais_status = self._ais_freshness(live)
-
         # Prefer a trained model whose target is an actual verified route-rate
         # observation. Exact route matching is intentional; no unrelated
         # destination/commodity row is substituted.
@@ -265,7 +193,6 @@ class RouteModel:
                 direct = None
             if direct is not None:
                 direct["current_spot_rate_usd_per_ton"] = current_spot_rate_usd_per_ton
-                direct["ais"] = ais_status.to_dict()
                 for item in direct.get("forecasts", []):
                     if current_spot_rate_usd_per_ton is not None:
                         item["current_spot_rate_usd_per_ton"] = float(current_spot_rate_usd_per_ton)
@@ -275,7 +202,7 @@ class RouteModel:
         # have an eligible direct route-freight model, use the shared AIS/BDRY
         # route-level market-proxy model below. This keeps every synthetic lane
         # on the same route-freight data contract.
-        row,source_month,live=self._row(origin,destination,shipment_date,live=live)
+        row,source_month,live=self._row(origin,destination,shipment_date)
         current_proxy=float(row["bdry_proxy"].iloc[0])
         if not self.bdry.empty:
             eligible=self.bdry[self.bdry["month"]<=pd.Timestamp(shipment_date)]
@@ -286,37 +213,20 @@ class RouteModel:
         for h,model in self.models.items():
             pred=float(model.predict(row[NUMERIC+CATEGORICAL])[0])
             pct=(pred-current_proxy)/current_proxy if current_proxy else 0.0
-            # Never silently trust a losing model: surface the same
-            # naive-persistence guardrail here that route_freight_model.py
-            # and train.py already expose, per horizon.
-            horizon_metrics=self.meta.get("metrics",{}).get(str(h),{})
-            model_beats_baseline=horizon_metrics.get("model_beats_baseline")
             item={"horizon_months":h,"predicted_market_proxy":round(pred,4),
                   "proxy_change_pct":round(pct*100,3),
                   "route_feature_month":str(source_month.date()),
-                  "model_beats_baseline": model_beats_baseline,
-                  "naive_mae_proxy_points": horizon_metrics.get("naive_mae_proxy_points"),
-                  "model_mae_proxy_points": horizon_metrics.get("mae_proxy_points")}
+                  "ais_feature_stale": bool(live is None and pd.Timestamp(shipment_date)>pd.Timestamp(self.meta["latest_route_feature_month"])),
+                  "live_ais": live if live is not None else None}
             if current_spot_rate_usd_per_ton is not None:
                 spot=float(current_spot_rate_usd_per_ton)
                 item["indicative_route_rate_usd_per_ton"]=round(spot*(1+pct),2)
             out.append(item)
-        h1_beats_baseline=next((f.get("model_beats_baseline") for f in out if f["horizon_months"]==1),None)
-        disclaimer="Route-level operational features are AIS-derived, but historical route freight-rate labels are not present. USD/t is indicative only when calibrated from a user-supplied current spot rate."
-        if not h1_beats_baseline:
-            disclaimer += " This model did not beat naive persistence (assume no change) on held-out data for the H+1 horizon — treat it as low-confidence."
-        if ais_status.status in ("stale", "unavailable"):
-            disclaimer += f" {ais_status.note}"
         return {
             "route":f"{origin}-{destination}",
             "forecast_type":"ais_enhanced_route_proxy",
             "current_market_proxy":round(current_proxy,4),
             "current_spot_rate_usd_per_ton":current_spot_rate_usd_per_ton,
             "forecasts":out,
-            "model_beats_baseline":h1_beats_baseline,
-            # LIVE / RECENT / STALE / UNAVAILABLE — see app/data_freshness.py.
-            # Always reflects the real age of the underlying data against
-            # today's actual date, never against the requested shipment_date.
-            "ais":ais_status.to_dict(),
-            "disclaimer":disclaimer,
+            "disclaimer":"Route-level operational features are AIS-derived, but historical route freight-rate labels are not present. USD/t is indicative only when calibrated from a user-supplied current spot rate.",
         }
