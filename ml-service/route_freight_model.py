@@ -334,7 +334,16 @@ class RouteFreightModel:
             matching = {k for k in matching if k.endswith(f"|{route_id}")}
         return any(k in self.models[h] for h in self.models for k in matching)
 
-    def predict(self, origin: str, destination: str, when: str | pd.Timestamp, route_id: str | None = None, commodity: str | None = None) -> dict[str, Any] | None:
+    def predict(
+        self,
+        origin: str,
+        destination: str,
+        when: str | pd.Timestamp,
+        route_id: str | None = None,
+        commodity: str | None = None,
+        cargo_size_t: float | None = None,
+        vessel_class: str | None = None,
+    ) -> dict[str, Any] | None:
         if self.data.empty or not self.models:
             return None
         candidates = []
@@ -359,8 +368,26 @@ class RouteFreightModel:
         if len(prior) < 3:
             return None
         latest = prior.iloc[-1]
+        # BUGFIX: cargo_size_t and vessel_class are real model inputs (see
+        # NUMERIC/CATEGORICAL above) — a 50,000t Supramax shipment and a
+        # 150,000t Capesize shipment on the same route/date used to produce
+        # the identical prediction, because both silently fell back to
+        # whatever the route's most recent *historical* observation
+        # happened to record, ignoring what the current request actually
+        # asked for. Use the request's own values when supplied, and only
+        # fall back to the historical observation for whichever of the two
+        # the caller didn't provide.
+        request_cargo_size_t = (
+            float(cargo_size_t) if cargo_size_t is not None and cargo_size_t > 0 else None
+        )
+        request_vessel_class = (
+            str(vessel_class).strip() if vessel_class not in (None, "") else None
+        )
         base = {
-            "cargo_size_t": float(latest.cargo_size_t or 0),
+            "cargo_size_t": (
+                request_cargo_size_t if request_cargo_size_t is not None
+                else float(latest.cargo_size_t or 0)
+            ),
             "lag1": float(prior.iloc[-1].freight_usd_per_t),
             "lag2": float(prior.iloc[-2].freight_usd_per_t),
             "lag3": float(prior.iloc[-3].freight_usd_per_t),
@@ -369,9 +396,14 @@ class RouteFreightModel:
             "month_sin": float(np.sin(2 * np.pi * when.month / 12)),
             "month_cos": float(np.cos(2 * np.pi * when.month / 12)),
             "commodity": latest.commodity,
-            "vessel_class": latest.vessel_class,
+            "vessel_class": (
+                request_vessel_class if request_vessel_class is not None
+                else latest.vessel_class
+            ),
             "observation_type": latest.observation_type,
         }
+        cargo_size_source = "request" if request_cargo_size_t is not None else "historical"
+        vessel_class_source = "request" if request_vessel_class is not None else "historical"
         curve = []
         for h in (1, 2, 3):
             model = self.models.get(h, {}).get(key)
@@ -411,6 +443,15 @@ class RouteFreightModel:
             return None
         
         h1_beats_baseline = next((c.get("model_beats_baseline") for c in curve if c["horizon_months"] == 1), None)
+        # Actual historical route freight (not BDRY) for the "route-aware"
+        # chart: the last up-to-12 monthly observations that fed the model,
+        # in the same {"month","value"} shape the BDRY history endpoint
+        # already uses, so the frontend can plot a route-specific
+        # history-plus-forecast series instead of always defaulting to BDRY.
+        history = [
+            {"month": str(row.month.date())[:7], "value": round(float(row.freight_usd_per_t), 2)}
+            for row in prior.tail(12).itertuples()
+        ]
         return {
             "forecast_type": "route_specific",
             "data_confidence": ("low" if self.data_mode == "synthetic_mvp" else ("high" if len(prior) >= 36 else "medium")),
@@ -421,9 +462,14 @@ class RouteFreightModel:
             "last_available_freight_usd_per_ton": round(float(prior.iloc[-1].freight_usd_per_t), 2),
             "predicted_freight_rate_usd_per_ton": curve[0]["predicted_rate_usd_per_ton"],
             "forecasts": curve,
+            "history": history,
             "source": "route_freight_observations.csv",
             "source_data_status": "synthetic_mvp" if self.data_mode == "synthetic_mvp" else "verified_production",
             "data_mode": self.data_mode,
             "model_beats_baseline": h1_beats_baseline,
+            "cargo_size_t_used": base["cargo_size_t"],
+            "cargo_size_source": cargo_size_source,
+            "vessel_class_used": base["vessel_class"],
+            "vessel_class_source": vessel_class_source,
             "disclaimer": ("Forecast is trained on synthetic route freight rates for MVP demonstration only; values are not broker quotes or observed market rates." if self.data_mode == "synthetic_mvp" else "Forecast is trained on verified published/observed route freight-rate observations. Bounds are ensemble spread, not statistical confidence intervals."),
         }

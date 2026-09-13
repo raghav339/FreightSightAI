@@ -33,6 +33,8 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import OneHotEncoder
 
+from ordinal_risk_model import OrdinalRiskClassifier
+
 ROOT = Path(__file__).resolve().parent
 MODELS = ROOT / "models"
 MODELS.mkdir(exist_ok=True)
@@ -316,11 +318,14 @@ def risk_walk_forward_cv(master, num, cat, class_names=("low", "medium", "high")
         f_enc = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
         Xtr_cat = f_enc.fit_transform(f_train[cat])
         Xte_cat = f_enc.transform(f_test[cat])
-        Xtr = np.column_stack([f_train[num].values, Xtr_cat])
-        Xte = np.column_stack([f_test[num].values, Xte_cat])
+        Xtr = np.column_stack([f_train[num].values.astype(float), Xtr_cat])
+        Xte = np.column_stack([f_test[num].values.astype(float), Xte_cat])
 
-        f_clf = RandomForestClassifier(n_estimators=300, random_state=42, n_jobs=-1, class_weight="balanced")
-        f_clf.fit(Xtr, f_train["fold_risk"].map(classes))
+        # (Bug fix, 2026-09) Same ordinal-regression switch as the main
+        # classifier below — kept in sync so this CV evaluates the same
+        # architecture that actually gets deployed, not a different one.
+        f_clf = OrdinalRiskClassifier(thresholds=(float(fq1), float(fq2)), class_names=class_names, n_estimators=300, random_state=42, n_jobs=-1)
+        f_clf.fit(Xtr, f_train["risk_score"].values)
         y_true = f_test["fold_risk"].map(classes)
         y_pred = f_clf.predict(Xte)
 
@@ -365,6 +370,12 @@ def risk_walk_forward_cv(master, num, cat, class_names=("low", "medium", "high")
             "refit per fold)."
         ),
         "n_folds": len(folds_report),
+        "risk_model_architecture": (
+            "OrdinalRiskClassifier (RandomForestRegressor on continuous risk_score, "
+            "bucketed at fold-local train-only q1/q2 thresholds) — see ordinal_risk_model.py. "
+            "Replaced a plain RandomForestClassifier (2026-09 fix) after it scored 0% "
+            "precision/recall on 'medium' in every fold."
+        ),
         "folds": folds_report,
         "aggregated_across_folds": {
             "confusion_matrix": agg_cm.tolist(),
@@ -624,9 +635,22 @@ def main(data_dir=None, output_dir=None):
     if test.empty:
         raise ValueError("Test dataset is empty.")
 
-    cat=["port","commodity"]; num=["bdry_lag1","bdry_lag2","bdry_lag3","bdry_rolling_3m_avg","brent_lag1","trade_signal_lag1","trade_signal_yoy_growth","has_trade_signal","import_volume","export_volume","vessel_calls","month_num","quarter"]
+    # (Bug fix, 2026-09) has_portwatch_coverage, _congestion_pctile and
+    # _data_uncertainty are added below. has_portwatch_coverage/data_uncertainty
+    # were computed above (for the risk_score formula) but never made it into
+    # the model's own feature list — the model had to guess "no port data"
+    # from vessel_calls==0, which is ambiguous with genuinely-zero congestion
+    # since vessel_calls is fillna(0)'d. _congestion_pctile is added too,
+    # since it's the same real per-row signal vessel_calls already is, just
+    # percentile-ranked. All three are known at prediction time (no future
+    # information), so this is safe, ordinary feature engineering — NOT the
+    # same as adding _vol_pctile/_shock_pctile/_trend_pctile, which are
+    # deliberately excluded: those are built from vol.shift(-1) (literally
+    # next month's value) and are direct 70%-weight components of the label
+    # itself, so using them as inputs would leak the label into the features.
+    cat=["port","commodity"]; num=["bdry_lag1","bdry_lag2","bdry_lag3","bdry_rolling_3m_avg","brent_lag1","trade_signal_lag1","trade_signal_yoy_growth","has_trade_signal","import_volume","export_volume","vessel_calls","month_num","quarter","has_portwatch_coverage","_congestion_pctile","_data_uncertainty"]
     enc=OneHotEncoder(handle_unknown="ignore",sparse_output=False); Xtr_cat=enc.fit_transform(train[cat]); Xte_cat=enc.transform(test[cat]);
-    feature_names=num+enc.get_feature_names_out(cat).tolist(); Xtr=np.column_stack([train[num].values,Xtr_cat]); Xte=np.column_stack([test[num].values,Xte_cat])
+    feature_names=num+enc.get_feature_names_out(cat).tolist(); Xtr=np.column_stack([train[num].values.astype(float),Xtr_cat]); Xte=np.column_stack([test[num].values.astype(float),Xte_cat])
     reg=RandomForestRegressor(n_estimators=300,random_state=42,n_jobs=-1,max_depth=12);
 
     if Xtr.size == 0:
@@ -702,6 +726,12 @@ def main(data_dir=None, output_dir=None):
         "model": model_eval,
         "improvement_pct_vs_naive_persistence": _improvement_pct(naive_eval["mae"], model_eval["mae"]),
         "improvement_pct_vs_moving_average_3m": _improvement_pct(movavg_eval["mae"], model_eval["mae"]),
+        # Explicit boolean guardrail flag (same field name/semantics as
+        # route_model.py's and route_freight_model.py's model_beats_baseline)
+        # so app/utils.py can gate serving instead of only route-level code
+        # doing so. True only when the model's own MAE beats naive
+        # persistence's MAE on this horizon's held-out test rows.
+        "model_beats_baseline": bool(model_eval["mae"] < naive_eval["mae"]),
     }
 
     # ------------------------------------------------------------------
@@ -754,12 +784,24 @@ def main(data_dir=None, output_dir=None):
             "model": model_eval_h,
             "improvement_pct_vs_naive_persistence": _improvement_pct(naive_eval_h["mae"], model_eval_h["mae"]),
             "improvement_pct_vs_moving_average_3m": _improvement_pct(movavg_eval_h["mae"], model_eval_h["mae"]),
+            # See baseline_comparison above for the same flag at H+1.
+            "model_beats_baseline": bool(model_eval_h["mae"] < naive_eval_h["mae"]),
         }
         horizon_models[h] = reg_h
 
 
+    # (Bug fix, 2026-09) Was a plain RandomForestClassifier trained on the
+    # bucketed target_risk label. Measured result: "medium" scored 0%
+    # precision/recall in the holdout AND in every walk-forward CV fold —
+    # a nominal classifier can't express "close to a boundary" on what is
+    # actually a continuous, ordered score. Fix: regress the continuous
+    # risk_score itself and bucket only the final prediction at the same
+    # train-only q1/q2 thresholds the labels were built from. See
+    # ordinal_risk_model.py for the full rationale and the predict_proba/
+    # classes_ compatibility shim that keeps app/utils.py unchanged.
     classes={"low":0,"medium":1,"high":2}; class_names=["low","medium","high"]
-    clf=RandomForestClassifier(n_estimators=300,random_state=42,n_jobs=-1,class_weight="balanced"); clf.fit(Xtr,train.target_risk.map(classes))
+    clf=OrdinalRiskClassifier(thresholds=(float(q1),float(q2)),class_names=tuple(class_names),n_estimators=300,random_state=42,n_jobs=-1)
+    clf.fit(Xtr,train["risk_score"].values)
     rp=clf.predict(Xte)
     y_true=test.target_risk.map(classes); y_pred=rp
     acc=accuracy_score(y_true,rp); cm=confusion_matrix(y_true,rp,labels=[0,1,2]).tolist()
@@ -842,7 +884,7 @@ def main(data_dir=None, output_dir=None):
     dataset_hash, dataset_file_hashes = _dataset_hash(DATA, DATA_FILES.values())
     model_version = f"real_monthly_v2-{training_timestamp}-{dataset_hash}"
     forecast_hyperparameters = {"n_estimators": 300, "random_state": 42, "n_jobs": -1, "max_depth": 12}
-    risk_hyperparameters = {"n_estimators": 300, "random_state": 42, "n_jobs": -1, "class_weight": "balanced"}
+    risk_hyperparameters = {"n_estimators": 300, "random_state": 42, "n_jobs": -1, "thresholds": [float(q1), float(q2)]}
     training_metadata_block = {
         "model_version": model_version,
         "training_timestamp": training_timestamp,
@@ -863,7 +905,7 @@ def main(data_dir=None, output_dir=None):
             "meaningfully (see README 'Known limitations'). "
             "validation_row_count is genuinely 0, not omitted."
         ),
-        "algorithm": {"forecast": "RandomForestRegressor", "risk": "RandomForestClassifier"},
+        "algorithm": {"forecast": "RandomForestRegressor", "risk": "OrdinalRiskClassifier (RandomForestRegressor on risk_score, bucketed at q1/q2)"},
         "hyperparameters": {"forecast": forecast_hyperparameters, "risk": risk_hyperparameters},
         "library_versions": {
             "python": sys.version.split()[0],
@@ -875,7 +917,7 @@ def main(data_dir=None, output_dir=None):
         },
     }
 
-    metadata={"pipeline_version":"real_monthly_v2","data_source_mode":DATA_SOURCE_MODE,"data_dir":str(DATA),"training_run":training_metadata_block,"training_row_count":training_metadata_block["training_row_count"],"test_row_count":training_metadata_block["test_row_count"],"model_version":training_metadata_block["model_version"],"feature_cols":feature_names,"numeric_features":num,"categorical_features":cat,"target":"next_month_bdry_market_proxy_delta_vs_bdry_lag1","target_transform":{"type":"delta_vs_last_known","reconstruct_level_as":"prediction = bdry_lag1 + model_output","reason":"RandomForest leaves cannot extrapolate beyond the training target range; BDRY trended well outside the training range by the test period, so predicting the level directly under-forecast by ~5x naive persistence's error. Predicting the (roughly stationary) change instead avoids the extrapolation ceiling. See README Known limitations."},"commodities":COMMODITIES,"bdry_history_12m": bdry_history,"origins":[p for p in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"]],"destinations":EAST_COAST,"routes":[f"{o}-{d}" for o in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"] for d in EAST_COAST],"shipment_modes":["Bulk Carrier","Charter"],"vessel_types":["Handysize","Supramax","Panamax","Capesize"],"latest_lookup":look,"risk_classes":["low","medium","high"],"risk_thresholds":[float(q1),float(q2)],"risk_weights":RISK_WEIGHTS,"risk_methodology":"hybrid_score: volatility+rate_shock+trend_deviation+port_congestion+data_uncertainty, each percentile-ranked against training-period distribution, weighted-summed, then bucketed at train-only tertiles","metrics":{"forecast_mae":round(float(mae),4),"risk_accuracy":round(float(acc),4),"risk_balanced_accuracy":round(float(balanced_acc),4),"risk_macro_f1":round(float(macro_f1),4),"risk_weighted_f1":round(float(weighted_f1),4),"risk_per_class":per_class_metrics,"risk_classes_missing_from_test":classes_missing_from_test,"risk_train_class_counts":train_class_counts,"risk_test_class_counts":test_class_counts,"risk_confusion_matrix":cm,"risk_confusion_matrix_labels":class_names,"risk_walk_forward_cv":risk_cv,"baseline_comparison":baseline_comparison,"horizon_metrics":{str(h): horizon_metrics[h] for h in HORIZONS},"horizons_available":HORIZONS},"data_files":DATA_FILES,"forecast_feature_importance":forecast_feature_importance,"risk_feature_importance":risk_feature_importance,"numeric_feature_stats":numeric_feature_stats}
+    metadata={"pipeline_version":"real_monthly_v2","data_source_mode":DATA_SOURCE_MODE,"data_dir":str(DATA),"training_run":training_metadata_block,"training_row_count":training_metadata_block["training_row_count"],"test_row_count":training_metadata_block["test_row_count"],"model_version":training_metadata_block["model_version"],"feature_cols":feature_names,"numeric_features":num,"categorical_features":cat,"target":"next_month_bdry_market_proxy_delta_vs_bdry_lag1","target_transform":{"type":"delta_vs_last_known","reconstruct_level_as":"prediction = bdry_lag1 + model_output","reason":"RandomForest leaves cannot extrapolate beyond the training target range; BDRY trended well outside the training range by the test period, so predicting the level directly under-forecast by ~5x naive persistence's error. Predicting the (roughly stationary) change instead avoids the extrapolation ceiling. See README Known limitations."},"commodities":COMMODITIES,"bdry_history_12m": bdry_history,"origins":[p for p in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"]],"destinations":EAST_COAST,"routes":[f"{o}-{d}" for o in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"] for d in EAST_COAST],"shipment_modes":["Bulk Carrier","Charter"],"vessel_types":["Handysize","Supramax","Panamax","Capesize"],"latest_lookup":look,"risk_classes":["low","medium","high"],"risk_thresholds":[float(q1),float(q2)],"risk_weights":RISK_WEIGHTS,"risk_methodology":"hybrid_score: volatility+rate_shock+trend_deviation+port_congestion+data_uncertainty, each percentile-ranked against training-period distribution, weighted-summed, then bucketed at train-only tertiles. (2026-09 fix) Classifier switched from plain RandomForestClassifier on the bucketed label to OrdinalRiskClassifier (regresses the continuous risk_score, buckets only the final prediction) after 'medium' measured 0% precision/recall under the old approach in the holdout and every walk-forward fold; has_portwatch_coverage/_congestion_pctile/_data_uncertainty were also added to the feature list (previously computed but unused by the model).","metrics":{"forecast_mae":round(float(mae),4),"risk_accuracy":round(float(acc),4),"risk_balanced_accuracy":round(float(balanced_acc),4),"risk_macro_f1":round(float(macro_f1),4),"risk_weighted_f1":round(float(weighted_f1),4),"risk_per_class":per_class_metrics,"risk_classes_missing_from_test":classes_missing_from_test,"risk_train_class_counts":train_class_counts,"risk_test_class_counts":test_class_counts,"risk_confusion_matrix":cm,"risk_confusion_matrix_labels":class_names,"risk_walk_forward_cv":risk_cv,"baseline_comparison":baseline_comparison,"horizon_metrics":{str(h): horizon_metrics[h] for h in HORIZONS},"horizons_available":HORIZONS},"data_files":DATA_FILES,"forecast_feature_importance":forecast_feature_importance,"risk_feature_importance":risk_feature_importance,"numeric_feature_stats":numeric_feature_stats}
     with open(MODELS/"metadata.json","w") as f: json.dump(metadata,f,indent=2)
     master.to_csv(DATA/"monthly_feature_table.csv",index=False)
     print(json.dumps(metadata["metrics"],indent=2)); print(f"Saved {len(master)} monthly port/commodity rows to {DATA/'monthly_feature_table.csv'}")

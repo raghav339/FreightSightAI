@@ -12,8 +12,9 @@ import { motion } from "framer-motion";
 import { LineChart as LineChartIcon } from "lucide-react";
 import api from "../api/client.js";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card.jsx";
+import { isRouteBasedForecast } from "../lib/forecastType.js";
 
-function ChartTooltip({ active, payload, label }) {
+function ChartTooltip({ active, payload, label, unitLabel }) {
   if (!active || !payload?.length) return null;
   const point = payload[0];
   return (
@@ -22,24 +23,40 @@ function ChartTooltip({ active, payload, label }) {
       <div className="mt-0.5 font-display text-sm font-semibold text-signal">
         {Number(point.value).toFixed(2)}
         <span className="ml-1.5 font-body text-xs font-normal text-slate-400">
-          {point.payload?.isForecast ? "BDRY Forecast" : "BDRY"}
+          {point.payload?.isForecast ? `${unitLabel} Forecast` : unitLabel}
         </span>
       </div>
     </div>
   );
 }
 
-export default function TrendChart({ points }) {
-  const [history, setHistory] = useState([]);
+export default function TrendChart({
+  points,
+  originPort,
+  destinationPort,
+  forecastType,
+  routeHistory,
+  forecastCurve,
+}) {
+  const [bdryHistory, setBdryHistory] = useState([]);
+  const routeMode = isRouteBasedForecast(forecastType);
 
   useEffect(() => {
+    // The BDRY 12-month history is only needed when we're actually going
+    // to render the BDRY chart — skip the fetch entirely in route mode so
+    // a route-specific forecast never gets silently overwritten by BDRY
+    // data landing after this request kicks off.
+    if (routeMode) {
+      setBdryHistory([]);
+      return;
+    }
     let cancelled = false;
 
     api
       .get("/dashboard-summary")
       .then(({ data }) => {
         if (!cancelled) {
-          setHistory(
+          setBdryHistory(
             Array.isArray(data.bdry_history_12m)
               ? data.bdry_history_12m
               : []
@@ -47,21 +64,49 @@ export default function TrendChart({ points }) {
         }
       })
       .catch(() => {
-        if (!cancelled) setHistory([]);
+        if (!cancelled) setBdryHistory([]);
       });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [routeMode]);
 
-  const data = history.length
-    ? history
-    : (points || []).map((p, index, arr) => ({
-        month: p.label,
-        value: p.value,
-        isForecast: index === arr.length - 1,
-      }));
+  let data;
+  let title;
+  let unitLabel;
+
+  if (routeMode) {
+    // Route-specific history + H+1/H+2/H+3 forecast, e.g. "Newcastle →
+    // Chennai" — never the BDRY series, even if BDRY history happens to
+    // be available, since it isn't what this forecast is based on.
+    const history = (routeHistory || []).map((p) => ({
+      month: p.month,
+      value: p.value,
+      isForecast: false,
+    }));
+    const forecast = (forecastCurve || []).map((p) => ({
+      month: p.horizon,
+      value: p.predicted_rate,
+      isForecast: true,
+    }));
+    data = [...history, ...forecast];
+    title =
+      originPort && destinationPort
+        ? `${originPort} → ${destinationPort} Freight Forecast`
+        : "Route Freight Forecast";
+    unitLabel = "Route";
+  } else {
+    data = bdryHistory.length
+      ? bdryHistory
+      : (points || []).map((p, index, arr) => ({
+          month: p.label,
+          value: p.value,
+          isForecast: index === arr.length - 1,
+        }));
+    title = "BDRY freight-rate trend — last 12 months";
+    unitLabel = "BDRY";
+  }
 
   if (!data.length) return null;
 
@@ -72,7 +117,7 @@ export default function TrendChart({ points }) {
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-signal/10 text-signal">
             <LineChartIcon className="h-[18px] w-[18px]" />
           </span>
-          <CardTitle className="text-lg">{"BDRY freight-rate trend — last 12 months"}</CardTitle>
+          <CardTitle className="text-lg">{title}</CardTitle>
         </CardHeader>
         <CardContent className="pt-2">
           <ResponsiveContainer width="100%" height={280}>
@@ -98,7 +143,7 @@ export default function TrendChart({ points }) {
                 axisLine={false}
                 width={44}
               />
-              <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#22D3C4", strokeWidth: 1, strokeDasharray: "4 4" }} />
+              <Tooltip content={<ChartTooltip unitLabel={unitLabel} />} cursor={{ stroke: "#22D3C4", strokeWidth: 1, strokeDasharray: "4 4" }} />
               <Line
                 type="monotone"
                 dataKey="value"

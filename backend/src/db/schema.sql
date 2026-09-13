@@ -95,15 +95,12 @@ CREATE TABLE IF NOT EXISTS forecast_results (
   -- (3) Explainability — why the model produced this forecast
   feature_importance JSON,
   top_drivers JSON,
-  -- (Phase 2/3) proxy vs route-specific transparency
   forecast_type VARCHAR(30),
   data_confidence VARCHAR(20),
   data_source_level VARCHAR(30),
-  -- (Phase 6) both-port vessel feasibility outcome
   vessel_status VARCHAR(60),
   vessel_rejection_reason VARCHAR(300),
   rejected_vessel_types JSON,
-  -- (Phase 4) genuine multi-horizon forecast curve (H+1/H+2/H+3)
   forecast_curve JSON,
   -- disclaimer computed by the ML service — see routes/forecast.js.
   recommended_vessel_reason TEXT,
@@ -122,8 +119,14 @@ CREATE TABLE IF NOT EXISTS alerts (
   -- migration in db/index.js for already-deployed databases.
   message TEXT NOT NULL,
   forecast_result_id INT,
+  -- Owning user, so GET /api/alerts and mark-read can be scoped per user
+  -- instead of leaking every user's alerts to every caller. Nullable
+  -- because alerts can originate from anonymous (not-logged-in) forecasts
+  -- or from the ML-service-unavailable failure path, which have no user.
+  user_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (forecast_result_id) REFERENCES forecast_results(id) ON DELETE SET NULL
+  FOREIGN KEY (forecast_result_id) REFERENCES forecast_results(id) ON DELETE SET NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 

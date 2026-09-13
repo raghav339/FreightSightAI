@@ -102,10 +102,15 @@ router.get("/dashboard-summary", async (req, res) => {
   }
 });
 
-// GET /api/alerts
-router.get("/alerts", async (req, res) => {
+// GET /api/alerts — a user's own alerts only. Previously had no auth at
+// all and returned every user's alerts to any caller; now requires a
+// valid session and scopes the query to the authenticated user.
+router.get("/alerts", requireAuth, async (req, res) => {
   try {
-    const rows = await db.query(`SELECT * FROM alerts ORDER BY created_at DESC LIMIT 50`);
+    const rows = await db.query(
+      `SELECT * FROM alerts WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
+      [req.user.id]
+    );
     res.json(rows);
   } catch (err) {
     console.error("alerts query failed:", err.message);

@@ -91,5 +91,89 @@ class RouteFreightModelTests(unittest.TestCase):
                 self.assertEqual(point["basis"], "synthetic_route_freight")
 
 
+    def _write_varied_rows(self, folder: Path, n=60):
+        """Training rows where freight rate genuinely depends on cargo size
+        and vessel class, so a model that actually uses those features (as
+        opposed to ignoring them) can be told apart from one that doesn't."""
+        data = folder / "route_freight_observations.csv"
+        cols = [
+            "observation_id","observation_date","origin","destination","route_id","commodity",
+            "vessel_class","cargo_size_t","freight_usd_per_t","rate_type","observation_type",
+            "source_name","source_url","source_reference","publication_date","retrieval_date",
+            "coverage_start","coverage_end","source_file","verification_status","verification_notes",
+            "confidence","schema_version"
+        ]
+        vessel_classes = ["Supramax", "Capesize"]
+        with data.open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=cols)
+            w.writeheader()
+            for i in range(n):
+                obs_date = (pd.Timestamp("2020-01-01") + pd.offsets.MonthBegin(i)).date().isoformat()
+                vessel_class = vessel_classes[i % 2]
+                cargo_size_t = 50000.0 if vessel_class == "Supramax" else 150000.0
+                # Larger cargo / Capesize genuinely commands a different
+                # rate per tonne in this fixture, plus a mild time trend so
+                # the lag/rolling features still carry signal.
+                rate = (8.0 if vessel_class == "Supramax" else 14.0) + i * 0.02
+                w.writerow({
+                    "observation_id": f"v{i}",
+                    "observation_date": obs_date,
+                    "origin": "Test Origin", "destination": "Test Destination", "route_id": "TEST_ROUTE",
+                    "commodity": "thermal_coal", "vessel_class": vessel_class, "cargo_size_t": cargo_size_t,
+                    "freight_usd_per_t": rate, "rate_type": "freight_usd_per_t", "observation_type": "assessment",
+                    "source_name": "test", "source_url": "https://example.com/report", "source_reference": f"test:{i}",
+                    "publication_date": "", "retrieval_date": "2026-09-04", "coverage_start": "", "coverage_end": "",
+                    "source_file": "test.csv", "verification_status": "verified", "verification_notes": "synthetic unit-test fixture",
+                    "confidence": "high", "schema_version": "1.0",
+                })
+        return data
+
+    def test_request_cargo_and_vessel_override_change_the_forecast(self):
+        """Regression test for the bug where the route model always used
+        the last historical observation's cargo_size_t/vessel_class instead
+        of what the current request actually specified — so a 50,000t
+        Supramax request and a 150,000t Capesize request for the same
+        route/date produced an identical forecast."""
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td)
+            self._write_varied_rows(d)
+            out = d / "models"
+            train(out, d)
+            model = RouteFreightModel(out, d)
+
+            small_supramax = model.predict(
+                "Test Origin", "Test Destination", "2022-01-01",
+                cargo_size_t=50000, vessel_class="Supramax",
+            )
+            large_capesize = model.predict(
+                "Test Origin", "Test Destination", "2022-01-01",
+                cargo_size_t=150000, vessel_class="Capesize",
+            )
+            self.assertIsNotNone(small_supramax)
+            self.assertIsNotNone(large_capesize)
+
+            # The two requests differ only in cargo size/vessel class, so
+            # the forecast must actually move (pre-fix, both silently used
+            # the last historical row's cargo_size_t/vessel_class and were
+            # therefore identical regardless of what was requested).
+            self.assertNotEqual(
+                small_supramax["predicted_freight_rate_usd_per_ton"],
+                large_capesize["predicted_freight_rate_usd_per_ton"],
+            )
+
+            # Provenance is reported correctly...
+            self.assertEqual(small_supramax["cargo_size_source"], "request")
+            self.assertEqual(small_supramax["vessel_class_source"], "request")
+            self.assertEqual(small_supramax["cargo_size_t_used"], 50000)
+            self.assertEqual(small_supramax["vessel_class_used"], "Supramax")
+
+            # ...and omitting the overrides still falls back to historical
+            # behavior (pre-fix behavior is preserved when the caller
+            # genuinely has no request-level value to supply).
+            historical = model.predict("Test Origin", "Test Destination", "2022-01-01")
+            self.assertEqual(historical["cargo_size_source"], "historical")
+            self.assertEqual(historical["vessel_class_source"], "historical")
+
+
 if __name__ == "__main__":
     unittest.main()

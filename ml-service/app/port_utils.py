@@ -811,18 +811,159 @@ APPROX_DISTANCE_NM = {
     "Samarinda":  {"Paradip": 2350, "Visakhapatnam": 2200, "Gangavaram": 2180, "Gopalpur": 2270, "Dhamra": 2400, "Sagar Sandheads": 2500, "Haldia": 2530},
     "Taboneo":    {"Paradip": 2200, "Visakhapatnam": 2050, "Gangavaram": 2030, "Gopalpur": 2120, "Dhamra": 2250, "Sagar Sandheads": 2350, "Haldia": 2380},
 }
+# BUGFIX (#29): APPROX_DISTANCE_NM only ever covered 7 of the 10 destination
+# ports declared in ORIGINS/DESTINATIONS (route_model.py, app/ais_stream.py)
+# — "Chennai", "Kamarajar" and "Tuticorin" were never added to it. Any
+# compare-origins / forecast / idle-alternatives call against one of those
+# three destinations therefore got `None` back from get_distance_nm() for
+# *every* origin, which cascaded into estimated_transit_days=None,
+# total_voyage_days=None, and compare-origins silently ranking those
+# requests on feasibility + freight rate only (distance/transit dropped out
+# of the sort key entirely — see ModelBundle.compare_origins in utils.py).
+#
+# Fix: get_distance_nm() below now falls back to a geodesic estimate
+# instead of returning None. A raw great-circle chord was considered and
+# rejected: several of these corridors must clear a strait/canal or a
+# continent that sits directly on the straight line between the two ports
+# (e.g. Murmansk->India realistically transits Suez, not a chord across
+# Russia/the Middle East), so a chord would *understate* real steaming
+# distance by roughly 2-3x for those origins (measured against this same
+# table — see _origin_detour_ratio's docstring). The frontend's voyage-map
+# waypoints (frontend/src/data/seaRoutes.js) were also considered and
+# rejected for this: that file states outright that its corridors are
+# "visual shipping corridors (not navigational guidance)" drawn with wide
+# margins for map legibility, and summing their segments overstates real
+# distance by ~40-50% versus this table's own verified entries for the
+# same origins.
+#
+# Instead, each origin's own known entries above are used to derive an
+# empirical detour ratio (table_distance / great_circle_distance) — which
+# captures that origin's real routing constraint (Suez for Murmansk,
+# Malacca for Vostochny, etc.) — and that ratio is applied to the
+# great-circle distance for the missing destination. This keeps the
+# estimate consistent with this table's own values instead of introducing
+# an unrelated distance model, and generalizes to any future destination
+# added to DESTINATIONS without another manual table edit. It is
+# explicitly reported as an estimate, not a verified distance — see
+# get_distance_source().
 
 DEFAULT_SERVICE_SPEED_KNOTS = 12.5  # typical laden bulk-carrier service speed
+
+# Port coordinates are the single source of truth already used for AIS
+# nearest-port matching (app/ais_stream.py) and the frontend map. Reused
+# here (rather than duplicated) so the geodesic fallback below and the
+# voyage map always agree on where each port actually is.
+try:
+    from app.ais_stream import PORT_COORDS as _PORT_COORDS
+except Exception:  # pragma: no cover - ais_stream has an optional `websocket`
+    # dependency; if it's missing in a stripped-down environment, the
+    # geodesic fallback below just degrades to "unavailable" instead of
+    # taking the whole module down.
+    _PORT_COORDS = {}
+
+
+def _haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance in nautical miles. Duplicated (not imported)
+    from app.ais_stream._haversine_nm on purpose — port_utils is a light,
+    dependency-free module imported everywhere (coa_optimizer, route_model,
+    main), and ais_stream pulls in threading/sqlite/websocket for its live
+    AIS collector. Keep this copy in sync if the formula ever changes."""
+    r_km = 6371.0088
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    km = 2 * r_km * math.asin(math.sqrt(a))
+    return km / 1.852
+
+
+# Matches INDIA_DESTS in frontend/src/data/seaRoutes.js — every entry
+# already in APPROX_DISTANCE_NM lands on one of these India-coast ports,
+# so the detour ratio derived from an origin's known entries below is only
+# ever applied to another port in this same family.
+_INDIA_COAST_DESTINATIONS = {
+    "Paradip", "Visakhapatnam", "Gangavaram", "Gopalpur", "Dhamra",
+    "Sagar Sandheads", "Haldia", "Chennai", "Kamarajar", "Tuticorin",
+}
+
+
+def _origin_detour_ratio(origin: str):
+    """Mean (table_distance / great_circle_distance) across this origin's
+    own known APPROX_DISTANCE_NM entries. This ratio is what actually
+    varies enormously by origin depending on real-world routing — e.g. it's
+    close to 1.0 for the Australia/Indonesia origins (open water most of
+    the way) but roughly 1.5x for the US East Coast (Cape of Good Hope
+    routing) and roughly 3x for Murmansk (Suez transit) — so a single
+    generic multiplier across all origins would badly misestimate most of
+    them. Using each origin's own already-curated entries keeps a new
+    destination's estimate consistent with that origin's existing,
+    presumably-reviewed numbers instead of inventing an unrelated figure.
+    Returns None if this origin has no known entries or no usable
+    coordinates to compute a great-circle baseline from."""
+    entries = APPROX_DISTANCE_NM.get(origin, {})
+    if not entries or origin not in _PORT_COORDS:
+        return None
+    o_lat, o_lon = _PORT_COORDS[origin]
+    ratios = []
+    for dest, table_nm in entries.items():
+        if dest not in _PORT_COORDS:
+            continue
+        d_lat, d_lon = _PORT_COORDS[dest]
+        geo_nm = _haversine_nm(o_lat, o_lon, d_lat, d_lon)
+        if geo_nm > 0:
+            ratios.append(table_nm / geo_nm)
+    return sum(ratios) / len(ratios) if ratios else None
+
+
+def _sea_route_distance_nm(origin: str, destination: str):
+    """Geodesic distance from `origin` to `destination`, corrected by
+    `origin`'s own empirical detour ratio (see _origin_detour_ratio).
+    Returns None when `destination` isn't one of the India-coast ports the
+    ratio was calibrated against, or when either port's coordinates or
+    `origin`'s detour ratio aren't available."""
+    if destination not in _INDIA_COAST_DESTINATIONS:
+        # The detour ratio is calibrated against this project's India-coast
+        # routes specifically — don't apply it to an unrelated destination.
+        return None
+    if origin not in _PORT_COORDS or destination not in _PORT_COORDS:
+        return None
+    ratio = _origin_detour_ratio(origin)
+    if ratio is None:
+        return None
+    o_lat, o_lon = _PORT_COORDS[origin]
+    d_lat, d_lon = _PORT_COORDS[destination]
+    return _haversine_nm(o_lat, o_lon, d_lat, d_lon) * ratio
+
+
+def get_distance_source(origin: str, destination: str) -> str:
+    """One of \"route_table\" (hand-curated APPROX_DISTANCE_NM entry),
+    \"geodesic_estimate\" (computed corridor fallback — see
+    _sea_route_distance_nm), or \"unavailable\"."""
+    if (origin in APPROX_DISTANCE_NM and destination in APPROX_DISTANCE_NM[origin]) or (
+        destination in APPROX_DISTANCE_NM and origin in APPROX_DISTANCE_NM[destination]
+    ):
+        return "route_table"
+    if _sea_route_distance_nm(origin, destination) is not None or _sea_route_distance_nm(destination, origin) is not None:
+        return "geodesic_estimate"
+    return "unavailable"
 
 
 def get_distance_nm(origin: str, destination: str):
     """Symmetric lookup — works origin->destination or destination->origin
-    (used for both the outbound voyage and idle-vessel ballast legs)."""
+    (used for both the outbound voyage and idle-vessel ballast legs).
+
+    Prefers the hand-curated APPROX_DISTANCE_NM table; when a pair isn't in
+    it, falls back to the geodesic corridor estimate in
+    _sea_route_distance_nm instead of returning None (see BUGFIX #29 note
+    above APPROX_DISTANCE_NM)."""
     if origin in APPROX_DISTANCE_NM and destination in APPROX_DISTANCE_NM[origin]:
         return APPROX_DISTANCE_NM[origin][destination]
     if destination in APPROX_DISTANCE_NM and origin in APPROX_DISTANCE_NM[destination]:
         return APPROX_DISTANCE_NM[destination][origin]
-    return None
+    estimated = _sea_route_distance_nm(origin, destination)
+    if estimated is None:
+        estimated = _sea_route_distance_nm(destination, origin)
+    return round(estimated, 1) if estimated is not None else None
 
 
 def estimate_transit_days(origin: str, destination: str, speed_knots: float = DEFAULT_SERVICE_SPEED_KNOTS,
@@ -830,8 +971,9 @@ def estimate_transit_days(origin: str, destination: str, speed_knots: float = DE
     """Rough sea-transit time. Prefers a user-supplied distance_km (converted
     to nautical miles) when given — that's a real, request-specific input
     the static origin/destination table can't know about (actual routing,
-    canal transit, weather diversions). Falls back to the indicative
-    APPROX_DISTANCE_NM table when no distance was supplied."""
+    canal transit, weather diversions). Falls back to get_distance_nm()
+    (route table, then geodesic corridor estimate) when no distance was
+    supplied."""
     if distance_km_override is not None and distance_km_override > 0:
         nm = distance_km_override / 1.852
     else:

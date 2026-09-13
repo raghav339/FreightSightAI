@@ -158,6 +158,19 @@ class ModelBundle:
         scored.sort(key=lambda s: s["influence_score"], reverse=True)
         return scored[:top_n]
 
+    def _horizon_beats_baseline(self, h):
+        """Return the held-out-data guardrail flag for BDRY forecast horizon
+        H+h, or None if metadata.json doesn't record one (older artifacts).
+
+        Mirrors route_model.py / route_freight_model.py's model_beats_baseline
+        semantics: True only when this horizon's RandomForest MAE beat naive
+        persistence's MAE on chronological held-out test rows. False means
+        the model is currently worse than "assume no change" for this
+        horizon — see _forecast_curve/_core_forecast, which gate serving on
+        this flag instead of only recording it for later inspection.
+        """
+        return self.meta.get("metrics", {}).get("horizon_metrics", {}).get(str(h), {}).get("model_beats_baseline")
+
     def _forecast_curve(self, X, prev, shipment_date, data_source_level):
         """(Phase 4) Build the real multi-horizon forecast — one point per
         directly-trained horizon model (H+1, H+2, H+3, ...), using the SAME
@@ -185,6 +198,21 @@ class ModelBundle:
             conf = 1.0 - (width / abs(point_level)) if point_level else 0.0
             conf = max(0.0, min(1.0, conf))
             target_date = shipment_date + pd.DateOffset(months=h)
+
+            # Guardrail (2026-09): don't silently trust a horizon that lost
+            # to naive persistence on held-out data. Earlier this only
+            # attached a flag/disclaimer (see route_model.py); now it
+            # actually replaces the served number with the naive-persistence
+            # prediction (== prev, i.e. "assume no change") so a caller that
+            # ignores the flag still gets the safer number, not the losing
+            # model's.
+            beats_baseline = self._horizon_beats_baseline(h)
+            gated = beats_baseline is False
+            if gated:
+                point_level = prev
+                lower = upper = prev
+                conf = 0.0
+
             curve.append({
                 "horizon": f"H+{h}",
                 "date": target_date.strftime("%Y-%m-%d"),
@@ -192,6 +220,8 @@ class ModelBundle:
                 "lower_bound": round(min(lower, upper), 2),
                 "upper_bound": round(max(lower, upper), 2),
                 "confidence": round(conf, 3),
+                "model_beats_baseline": beats_baseline,
+                "gated_to_naive_persistence": gated,
             })
         return curve
 
@@ -251,7 +281,24 @@ class ModelBundle:
 
         prev = float(lookup["bdry_lag1"])
         predicted_delta = float(self.reg.predict(X)[0])
+        # Guardrail (2026-09): the headline H+1 forecast must not silently
+        # trust a model that lost to naive persistence on held-out data.
+        # forecast_curve below applies the same gate per-horizon; this
+        # keeps the single-value `forecast` field (used for
+        # predicted_freight_rate_usd_per_ton, vessel recommendation, and
+        # decision text) consistent with the curve's own H+1 point instead
+        # of the two disagreeing.
+        forecast_beats_baseline = self._horizon_beats_baseline(1)
+        forecast_gated = forecast_beats_baseline is False
+        if forecast_gated:
+            predicted_delta = 0.0
         forecast = prev + predicted_delta
+        forecast_fallback_note = (
+            "BDRY market-proxy forecast did not beat the naive-persistence "
+            "baseline (assume no change) on held-out data for the H+1 "
+            "horizon; serving the naive-persistence value instead of the "
+            "model's prediction."
+        ) if forecast_gated else None
         forecast_curve = self._forecast_curve(X, prev, shipment_date, data_source_level)
         data_confidence = self._data_confidence(data_source_level, forecast_curve)
 
@@ -284,6 +331,9 @@ class ModelBundle:
             "training_data_mode": self.meta.get("data_source_mode", "unknown"),
             "risk": risk, "confidence": confidence,
             "dest_port_info": dest_port_info, "port_depth": port_depth,
+            "forecast_model_beats_baseline": forecast_beats_baseline,
+            "forecast_gated_to_naive_persistence": forecast_gated,
+            "forecast_fallback_note": forecast_fallback_note,
         }
 
     def predict(self, req, core=None):
@@ -295,14 +345,27 @@ class ModelBundle:
             core = self._core_forecast(req.destination_port, req.commodity, req.shipment_date)
         X = core["X"]; feature_values = core["feature_values"]; data_source_level = core["data_source_level"]; lookup = core["lookup"]
         prev = core["prev"]; forecast = core["forecast"]; forecast_curve = core["forecast_curve"]; data_confidence = core["data_confidence"]
+        forecast_model_beats_baseline = core["forecast_model_beats_baseline"]
+        forecast_gated_to_naive_persistence = core["forecast_gated_to_naive_persistence"]
+        forecast_fallback_note = core["forecast_fallback_note"]
         forecast_type = core["forecast_type"]; forecast_basis = core["forecast_basis"]; forecast_source = core["forecast_source"]
         training_data_mode = core["training_data_mode"]
         risk = core["risk"]; confidence = core["confidence"]
         dest_port_info = core["dest_port_info"]; port_depth = core["port_depth"]
         route_freight_result = None
         if self.route_freight is not None:
+            # BUGFIX: pass the request's own cargo_weight_tons/vessel_type
+            # through as model features instead of letting the route model
+            # silently fall back to whatever the last historical
+            # observation on this route happened to record — otherwise
+            # every request for a given route/date produced the same
+            # prediction regardless of the cargo size or vessel class the
+            # user actually entered.
             route_freight_result = self.route_freight.predict(
-                req.origin_port, req.destination_port, req.shipment_date, commodity=req.commodity
+                req.origin_port, req.destination_port, req.shipment_date,
+                commodity=req.commodity,
+                cargo_size_t=req.cargo_weight_tons,
+                vessel_class=port_utils._normalise_vessel_class(req.vessel_type) or req.vessel_type,
             )
         
         route_model_beats_baseline = route_freight_result.get("model_beats_baseline") if route_freight_result else None
@@ -327,6 +390,10 @@ class ModelBundle:
             forecast_basis = "Synthetic route freight rate (MVP)" if forecast_type == "synthetic_route" else "Verified route freight"
             forecast_source = "synthetic_route_freight_rates.csv (MVP development dataset)" if forecast_type == "synthetic_route" else "Verified route freight observations"
             training_data_mode = route_freight_result.get("data_mode", training_data_mode)
+            # Actual historical route freight (not BDRY) so the frontend can
+            # plot a route-specific history-plus-forecast chart instead of
+            # always defaulting to the BDRY series — see route_history below.
+            route_history = route_freight_result.get("history", [])
             # Convert the route model curve to the unified frontend contract.
             forecast_curve = [
                 {
@@ -341,6 +408,16 @@ class ModelBundle:
             ]
             data_source_level = "synthetic_route" if forecast_type == "synthetic_route" else "route_specific"
             data_confidence = "low" if forecast_type == "synthetic_route" else route_freight_result.get("data_confidence", "medium")
+            # The BDRY H+1 gate above describes the market-proxy model, not
+            # what's actually being served here (a route-specific/synthetic
+            # rate) — clear the gating/note so callers don't read a
+            # naive-persistence disclaimer against a number that isn't the
+            # naive-persistence value. forecast_model_beats_baseline is left
+            # as background info about the underlying BDRY model's health.
+            forecast_gated_to_naive_persistence = False
+            forecast_fallback_note = None
+        else:
+            route_history = []
         # risk/confidence come from `core` above — the BDRY-based risk
         # classifier runs on the same X regardless of the route-freight
         # override, so it's computed once in _core_forecast, not per call.
@@ -433,11 +510,12 @@ class ModelBundle:
             item = dict(entry)
             kind = "generic"
             port_name = None
+            port_label = None
             value = None
             limit = None
             if float(entry.get("typical_dwt", 0) or 0) < float(req.cargo_weight_tons):
                 kind = "cargo"
-                item["rejection_reason"] = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), cargo=req.cargo_weight_tons,
+                message = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), cargo=req.cargo_weight_tons,
                     dwt=float(entry.get("typical_dwt", 0) or 0)
                 )
             else:
@@ -451,6 +529,7 @@ class ModelBundle:
                     if ok:
                         continue
                     port_name = port_name_candidate
+                    port_label = label
                     low = (reason or "").lower()
                     if "loa limitation" in low:
                         kind = "loa"
@@ -471,8 +550,33 @@ class ModelBundle:
                     elif "no infrastructure data" in low:
                         kind = "unknown"
                     break
-                item["rejection_reason"] = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), port=port_name, value=value, limit=limit
+                message = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), port=port_name, value=value, limit=limit
                 )
+
+            # BUGFIX: `kind` (cargo/loa/beam/draft/unknown/generic) was only
+            # ever used to pick which message template to render, then
+            # thrown away — the API/frontend received a bare English
+            # sentence with no machine-readable category, so any UI wanting
+            # to label *why* a vessel was rejected had to pattern-match the
+            # message text (an "inferred" explanation) instead of reading
+            # the real failed constraint. Surface it explicitly as a
+            # structured `type` on each rejected vessel, using the
+            # canonical reason-type vocabulary (draft / LOA / beam /
+            # cargo_capacity / origin compatibility / destination
+            # compatibility). `handling rate` is not yet a feasibility
+            # check anywhere in the engine, so it is not produced here.
+            if kind == "cargo":
+                reason_type = "cargo_capacity"
+            elif kind in ("loa", "beam", "draft"):
+                reason_type = kind
+            elif kind == "unknown":
+                reason_type = "origin_compatibility" if port_label == "origin port" else "destination_compatibility"
+            else:
+                reason_type = "generic"
+
+            item["rejection_reason"] = message  # kept for existing consumers
+            item["feasible"] = False
+            item["reasons"] = [{"type": reason_type, "message": message}]
             rejected_reasons.append(item)
 
         turnaround=port_utils.port_turnaround_days(req.destination_port,req.cargo_weight_tons,delay_days=req.delay_days or 0)
@@ -486,7 +590,7 @@ class ModelBundle:
         )
         transit_source = (
             "user_provided" if (req.distance_km and req.distance_km > 0)
-            else ("route_table" if transit_days is not None else "unavailable")
+            else port_utils.get_distance_source(req.origin_port, req.destination_port)
         )
         transit_note = build_transit_note(
             origin=req.origin_port, destination=req.destination_port,
@@ -505,10 +609,10 @@ class ModelBundle:
         # supplied by the static port database; the decision guidance itself
         # is localized below.
         summary, window, vessel_note, idle = build_prediction_text(
-            commodity=req.commodity, destination=req.destination_port,
+            commodity=req.commodity, origin=req.origin_port, destination=req.destination_port,
             forecast=forecast, risk=risk, direction=direction_key, note=note,
             vessel=vessel, turnaround=turnaround, pct_move=pct,
-            delay_days=req.delay_days or 0,
+            delay_days=req.delay_days or 0, forecast_type=forecast_type,
         )
         duration_note = f" over {req.contract_duration_months:.0f} months" if req.contract_duration_months else ""
         strategy=build_contract_text( pct_move=pct, risk=risk, duration_note=duration_note,
@@ -523,12 +627,15 @@ class ModelBundle:
             if use_route_freight
             else [{"label":"BDRY lag 3m","value":round(float(lookup["bdry_lag3"]),2)},{"label":"BDRY lag 2m","value":round(float(lookup["bdry_lag2"]),2)},{"label":"last known","value":round(prev,2)},{"label":"forecast","value":round(forecast,2)}]
         )
-        return {"route":f"{req.origin_port}-{req.destination_port}","predicted_freight_rate_usd_per_ton":round(forecast,2),"risk_label":risk,"risk_confidence":round(confidence,3),"recommended_vessel_type":vessel,"recommended_charter_window":window,"summary":summary,"trend_points":trend,"feasible_vessel_types":feasible,"vessel_constraint_note":vessel_note,"origin_port_info":self._port_info(req.origin_port),"destination_port_info":self._port_info(req.destination_port),"port_turnaround_days":turnaround,"idle_management_advice":idle,"congestion_warning":build_congestion_text(congestion),"contracting_strategy":strategy,"feature_importance":self.meta.get("forecast_feature_importance",[])[:5],"top_drivers":self._local_drivers(feature_values),"data_source_level":data_source_level,"vessel_status":vessel_status,"vessel_rejection_reason":vessel_rejection_reason,"rejected_vessel_types":rejected_reasons,"forecast_curve":forecast_curve,"forecast_type":forecast_type,"data_confidence":data_confidence,"training_data_mode":training_data_mode,
+        return {"route":f"{req.origin_port}-{req.destination_port}","predicted_freight_rate_usd_per_ton":round(forecast,2),"risk_label":risk,"risk_confidence":round(confidence,3),"recommended_vessel_type":vessel,"recommended_charter_window":window,"summary":summary,"trend_points":trend,"feasible_vessel_types":feasible,"vessel_constraint_note":vessel_note,"origin_port_info":self._port_info(req.origin_port),"destination_port_info":self._port_info(req.destination_port),"port_turnaround_days":turnaround,"idle_management_advice":idle,"congestion_warning":build_congestion_text(congestion),"contracting_strategy":strategy,"feature_importance":self.meta.get("forecast_feature_importance",[])[:5],"top_drivers":self._local_drivers(feature_values),"data_source_level":data_source_level,"vessel_status":vessel_status,"vessel_rejection_reason":vessel_rejection_reason,"rejected_vessel_types":rejected_reasons,"forecast_curve":forecast_curve,"route_history":route_history,"forecast_type":forecast_type,"data_confidence":data_confidence,"training_data_mode":training_data_mode,
         "forecast_basis":forecast_basis,
         "forecast_source":forecast_source,
         "route_model_available": bool(route_freight_result and route_freight_result.get("forecasts")),
         "route_model_beats_baseline": route_model_beats_baseline,
         "route_model_fallback_note": route_model_fallback_note,
+        "forecast_model_beats_baseline": forecast_model_beats_baseline,
+        "forecast_gated_to_naive_persistence": forecast_gated_to_naive_persistence,
+        "forecast_fallback_note": forecast_fallback_note,
         "latest_feature_date":self.meta.get("training_run",{}).get("training_period",{}).get("end") or self.meta.get("training_run",{}).get("test_period",{}).get("end"),
         "risk_reliability":"low for high-risk class; medium overall" if self.meta.get("metrics",{}).get("risk_walk_forward_cv",{}).get("status") == "ok" else "medium",
         "recommended_vessel_reason":recommended_vessel_reason,
@@ -606,6 +713,7 @@ class ModelBundle:
             if pred.get("recommended_vessel_type"):
                 origin_port_ok = port_utils.vessel_fits_port(pred["recommended_vessel_type"], origin_info)
             distance_nm = port_utils.get_distance_nm(origin, req.destination_port)
+            distance_source = port_utils.get_distance_source(origin, req.destination_port)
             transit_days = port_utils.estimate_transit_days(origin, req.destination_port)
             total_voyage_days = (
                 round(transit_days + pred["port_turnaround_days"], 1)
@@ -649,6 +757,7 @@ class ModelBundle:
                 "origin_port_congestion_source": "static port_infra.json rating (typical_congestion)",
                 "ais_congestion": ais_congestion,
                 "distance_nm": distance_nm,
+                "distance_source": distance_source,
                 "estimated_transit_days": transit_days,
                 "port_turnaround_days": pred["port_turnaround_days"],
                 "total_voyage_days": total_voyage_days,
@@ -720,6 +829,11 @@ class ModelBundle:
         X = np.concatenate([num, cat], axis=1)
 
         deltas = np.asarray(self.reg.predict(X), dtype=float)
+        # Same H+1 guardrail as _core_forecast/predict(): don't serve a
+        # losing model's delta here either, or idle-alternatives ranking
+        # would use a different (ungated) forecast than the main endpoint.
+        if self._horizon_beats_baseline(1) is False:
+            deltas = np.zeros_like(deltas)
         probabilities = self.clf.predict_proba(X)
         classes = list(self.clf.classes_)
         risk_classes = {0: "low", 1: "medium", 2: "high"}
@@ -809,11 +923,18 @@ class ModelBundle:
                 # same final rate that the old full-predict path used.
                 if self.route_freight is not None:
                     try:
+                        # BUGFIX: cargo_weight/vessel_type were already
+                        # resolved from the request above but never handed
+                        # to the route model, which fell back to whatever
+                        # cargo size/vessel class the last historical
+                        # observation on this route recorded.
                         route_result = self.route_freight.predict(
                             origin,
                             req.current_port,
                             shipment_date,
                             commodity=commodity,
+                            cargo_size_t=cargo_weight,
+                            vessel_class=port_utils._normalise_vessel_class(vessel_type) or vessel_type,
                         )
                     except Exception as exc:
                         route_result = None

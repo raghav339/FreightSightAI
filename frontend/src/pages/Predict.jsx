@@ -39,7 +39,14 @@ export default function Predict() {
             className="flex flex-col gap-6"
           >
             <ResultCards result={result} />
-            <TrendChart points={result.chart_values} />
+            <TrendChart
+              points={result.chart_values}
+              originPort={result.origin_port_info?.name}
+              destinationPort={result.destination_port_info?.name}
+              forecastType={result.forecast_type}
+              routeHistory={result.route_history}
+              forecastCurve={result.forecast_curve}
+            />
             <WhatIfPanel baseRequest={lastRequest} />
             <AlertsPanel />
           </motion.div>

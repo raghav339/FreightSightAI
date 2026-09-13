@@ -7,6 +7,7 @@ import { Button } from "./ui/button.jsx";
 import TiltCard from "./ui/tilt-card.jsx";
 import RouteMap from "./ui/RouteMap.jsx";
 import api from "../api/client.js";
+import { getForecastTypeInfo } from "../lib/forecastType.js";
 
 const RISK_VARIANT = { low: "low", medium: "medium", high: "high" };
 
@@ -80,6 +81,10 @@ export default function ResultCards({ result }) {
   const riskVariant = RISK_VARIANT[result.risk_label] || "medium";
   const pdfHref = result.record_id ? `${api.defaults.baseURL}/forecast/${result.record_id}/pdf` : null;
   const reportAvailable = result.report_available === true;
+  // One central interpretation of forecast_type, shared across every label
+  // below instead of each one re-deciding (or forgetting to decide) how to
+  // describe a synthetic/route-specific/AIS-enhanced forecast vs. BDRY.
+  const forecastTypeInfo = getForecastTypeInfo(result.forecast_type);
 
   async function downloadPdf() {
     if (!result.record_id || pdfLoading) return;
@@ -101,12 +106,10 @@ export default function ResultCards({ result }) {
 
   return (
     <motion.div initial="hidden" animate="show" variants={container} className="flex flex-col gap-5">
-      {(result.forecast_type === "market_proxy" || result.forecast_type === "synthetic_route") && (
+      {forecastTypeInfo.disclaimer && (
         <motion.div variants={item}>
           <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs leading-relaxed text-amber-200">
-            {result.forecast_type === "synthetic_route"
-              ? "MVP data notice: route freight rates are synthetic development data supplied for demonstration. They are not broker quotes, observed market rates, or real-time fixtures."
-              : "Freight forecast uses a market-index (BDRY) proxy because route-level freight observations are unavailable for this lane. It is not an observed route-specific freight rate."}
+            {forecastTypeInfo.disclaimer}
           </div>
         </motion.div>
       )}
@@ -124,8 +127,8 @@ export default function ResultCards({ result }) {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-hull-600/60 bg-hull-900/50 p-3">
             <div className="text-xs uppercase tracking-widest text-slate-500">{"What is predicted"}</div>
-            <div className="mt-1 text-sm font-medium text-paper-100">{result.forecast_basis || (result.forecast_type === "route_specific" ? "Verified route freight" : "BDRY dry-bulk market proxy")}</div>
-            <div className="mt-1 text-xs leading-relaxed text-slate-500">{result.forecast_source || "Historical BDRY + operational features"}</div>
+            <div className="mt-1 text-sm font-medium text-paper-100">{result.forecast_basis || forecastTypeInfo.basis}</div>
+            <div className="mt-1 text-xs leading-relaxed text-slate-500">{result.forecast_source || forecastTypeInfo.source}</div>
           </div>
           <div className="rounded-lg border border-hull-600/60 bg-hull-900/50 p-3">
             <div className="text-xs uppercase tracking-widest text-slate-500">{"Data quality"}</div>
@@ -139,7 +142,7 @@ export default function ResultCards({ result }) {
         <StatCard
           icon={Gauge}
           iconClass="text-signal"
-          label={"BDRY freight-rate proxy"}
+          label={forecastTypeInfo.statLabel}
           sub={`${"Route"}: ${result.route}`}
         >
           <div className="flex items-baseline gap-1.5">
@@ -147,7 +150,7 @@ export default function ResultCards({ result }) {
               {result.forecast_value?.toFixed(2)}
             </span>
           </div>
-          <span className="text-xs text-slate-500">{"BDRY ETF proxy — not a quoted USD/ton charter rate"}</span>
+          <span className="text-xs text-slate-500">{forecastTypeInfo.valueUnitNote}</span>
         </StatCard>
 
         <StatCard icon={ShieldAlert} iconClass="text-port" label={"Market risk"}>
@@ -224,28 +227,6 @@ export default function ResultCards({ result }) {
         )}
       </WideCard>
 
-      {result.forecast_curve?.length > 0 && (
-        <WideCard icon={CalendarClock} iconClass="text-amber" label={"Multi-horizon outlook"}>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {result.forecast_curve.map((p, i) => (
-              <div key={i} className="rounded-lg border border-hull-600/60 bg-hull-900/50 p-3">
-                <div className="font-mono text-xs text-slate-500">{p.date}</div>
-                <div className="font-display text-lg font-semibold text-paper-50">
-                  {typeof p.predicted_rate === "number" ? p.predicted_rate.toFixed(2) : "—"}
-                </div>
-                {(p.lower_bound != null && p.upper_bound != null) && (
-                  <div className="text-xs text-slate-500">
-                    {p.lower_bound.toFixed(2)}–{p.upper_bound.toFixed(2)}
-                  </div>
-                )}
-                {typeof p.confidence === "number" && <div className="mt-1 text-xs text-slate-600">{(p.confidence * 100).toFixed(1)}%</div>}
-              </div>
-            ))}
-          </div>
-          <p className="mt-1 text-[0.7rem] text-slate-600">{"Each horizon (H+1/H+2/H+3) is its own directly-trained model, not a relabeled single-step forecast."}</p>
-        </WideCard>
-      )}
-
       {(result.origin_port_info || result.destination_port_info) && (
         <WideCard icon={Anchor} iconClass="text-signal" label={"Vessel type optimization — port constraints"}>
           {result.vessel_status && (
@@ -276,13 +257,30 @@ export default function ResultCards({ result }) {
                 {"Rejected vessel classes"}
               </span>
               <div className="flex flex-col gap-1">
-                {result.rejected_vessel_types.map((rv, i) => (
-                  <div key={i} className="text-xs text-slate-500">
-                    <span className="font-mono text-slate-400">{rv.vessel_type || rv.name}</span>
-                    {" — "}
-                    {rv.rejection_reason || rv.reason}
-                  </div>
-                ))}
+                {result.rejected_vessel_types.map((rv, i) => {
+                  // Prefer the structured reason(s) the feasibility engine
+                  // actually failed on (rv.reasons[].type/message) over the
+                  // legacy flat string, so the badge shown here always
+                  // reflects the real failed constraint rather than a
+                  // guess inferred from the message text.
+                  const reasons = rv.reasons?.length ? rv.reasons : [{ type: null, message: rv.rejection_reason || rv.reason }];
+                  return (
+                    <div key={i} className="text-xs text-slate-500">
+                      <span className="font-mono text-slate-400">{rv.vessel_type || rv.vessel_class || rv.name}</span>
+                      {reasons.map((r, j) => (
+                        <span key={j}>
+                          {" — "}
+                          {r.type && (
+                            <span className="mr-1 rounded bg-slate-800 px-1 py-0.5 font-mono text-[10px] uppercase tracking-wide text-slate-400">
+                              {r.type}
+                            </span>
+                          )}
+                          {r.message}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
