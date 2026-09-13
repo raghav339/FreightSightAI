@@ -1,10 +1,4 @@
 // backend/src/db/initMysql.js
-// Applies schema.sql to a real MySQL server (e.g. a free Aiven MySQL
-// instance) using the same mysql2 driver already used by db/index.js.
-// Run once per fresh database: `npm run init-mysql-db`
-// Requires MYSQL_HOST/MYSQL_PORT/MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE
-// (+ MYSQL_SSL / MYSQL_SSL_CA if the provider requires TLS) in the
-// environment or backend/.env.
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
@@ -23,11 +17,7 @@ async function main() {
 
   const database = process.env.MYSQL_DATABASE || "freightsight";
 
-  // schema.sql hardcodes `CREATE DATABASE IF NOT EXISTS freightsight; USE
-  // freightsight;` for a plain local MySQL setup. Hosted free-tier providers
-  // (Aiven, etc.) instead give you one pre-created database (commonly
-  // `defaultdb`) and won't let you create another, so strip those two lines
-  // and target whatever MYSQL_DATABASE is actually configured to.
+  
   schemaSql = schemaSql
     .replace(/^\s*CREATE DATABASE.*$/im, "")
     .replace(/^\s*USE\s+\S+;\s*$/im, "");
