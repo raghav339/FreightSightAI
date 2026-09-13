@@ -856,9 +856,45 @@ def main(data_dir=None, output_dir=None):
         for n in num
     }
     # Prediction-time lookup: last known real feature values per port+commodity.
+    #
+    # BUGFIX (2026-09): this used to take the single absolute-latest row
+    # (g.iloc[-1]) for EVERY feature, including the congestion features
+    # (vessel_calls/import_volume/export_volume/has_portwatch_coverage/
+    # _congestion_pctile/_data_uncertainty). PortWatch coverage ends months
+    # before bdry/brent do (see data_files), so the absolute-latest row for
+    # every single port+commodity has has_portwatch_coverage=False — which
+    # freezes _congestion_pctile at the neutral 0.5 fallback and
+    # _data_uncertainty at 1.0 for ALL of them, identically. Since port
+    # congestion is the single largest genuinely per-port risk_score
+    # component (20% weight; port/commodity one-hot dummies otherwise carry
+    # almost no importance — see risk_feature_importance), this silently
+    # discarded the one real per-route signal the whole hybrid-risk fix was
+    # built around, collapsing every live risk prediction onto the
+    # market-wide (BDRY/Brent/month) signal alone.
+    #
+    # Fix: keep the true latest row for the market-wide features (bdry/
+    # brent/trade/month), but for the congestion-sourced features, use the
+    # latest row that actually HAS real PortWatch coverage for this port —
+    # falling back to the latest row's neutral values only for ports that
+    # never had PortWatch coverage at all (a genuine, honestly-reported data
+    # gap, not staleness). Same fallback-hierarchy spirit as
+    # ModelBundle._resolve_lookup in app/utils.py.
+    CONGESTION_FEATURES = ["vessel_calls", "import_volume", "export_volume",
+                            "has_portwatch_coverage", "_congestion_pctile", "_data_uncertainty"]
     look={}
+    congestion_feature_source_month={}
     for (port,commodity),g in master.sort_values("month").groupby(["port","commodity"]):
-        r=g.iloc[-1]; look[f"{port}|{commodity}"]={k:float(r[k]) for k in num}
+        r=g.iloc[-1]
+        row={k:float(r[k]) for k in num}
+        covered=g[g["has_portwatch_coverage"]]
+        if not covered.empty:
+            r_cov=covered.iloc[-1]
+            for k in CONGESTION_FEATURES:
+                row[k]=float(r_cov[k])
+            congestion_feature_source_month[f"{port}|{commodity}"]=str(pd.Timestamp(r_cov["month"]).date())
+        else:
+            congestion_feature_source_month[f"{port}|{commodity}"]=None
+        look[f"{port}|{commodity}"]=row
     joblib.dump(reg,MODELS/"forecast_model.joblib"); joblib.dump(clf,MODELS/"risk_model.joblib"); joblib.dump(enc,MODELS/"feature_encoder.joblib")
     # forecast_model.joblib remains the H+1 model (unchanged filename, so
     # any code that only knows about a single horizon keeps working
@@ -917,7 +953,7 @@ def main(data_dir=None, output_dir=None):
         },
     }
 
-    metadata={"pipeline_version":"real_monthly_v2","data_source_mode":DATA_SOURCE_MODE,"data_dir":str(DATA),"training_run":training_metadata_block,"training_row_count":training_metadata_block["training_row_count"],"test_row_count":training_metadata_block["test_row_count"],"model_version":training_metadata_block["model_version"],"feature_cols":feature_names,"numeric_features":num,"categorical_features":cat,"target":"next_month_bdry_market_proxy_delta_vs_bdry_lag1","target_transform":{"type":"delta_vs_last_known","reconstruct_level_as":"prediction = bdry_lag1 + model_output","reason":"RandomForest leaves cannot extrapolate beyond the training target range; BDRY trended well outside the training range by the test period, so predicting the level directly under-forecast by ~5x naive persistence's error. Predicting the (roughly stationary) change instead avoids the extrapolation ceiling. See README Known limitations."},"commodities":COMMODITIES,"bdry_history_12m": bdry_history,"origins":[p for p in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"]],"destinations":EAST_COAST,"routes":[f"{o}-{d}" for o in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"] for d in EAST_COAST],"shipment_modes":["Bulk Carrier","Charter"],"vessel_types":["Handysize","Supramax","Panamax","Capesize"],"latest_lookup":look,"risk_classes":["low","medium","high"],"risk_thresholds":[float(q1),float(q2)],"risk_weights":RISK_WEIGHTS,"risk_methodology":"hybrid_score: volatility+rate_shock+trend_deviation+port_congestion+data_uncertainty, each percentile-ranked against training-period distribution, weighted-summed, then bucketed at train-only tertiles. (2026-09 fix) Classifier switched from plain RandomForestClassifier on the bucketed label to OrdinalRiskClassifier (regresses the continuous risk_score, buckets only the final prediction) after 'medium' measured 0% precision/recall under the old approach in the holdout and every walk-forward fold; has_portwatch_coverage/_congestion_pctile/_data_uncertainty were also added to the feature list (previously computed but unused by the model).","metrics":{"forecast_mae":round(float(mae),4),"risk_accuracy":round(float(acc),4),"risk_balanced_accuracy":round(float(balanced_acc),4),"risk_macro_f1":round(float(macro_f1),4),"risk_weighted_f1":round(float(weighted_f1),4),"risk_per_class":per_class_metrics,"risk_classes_missing_from_test":classes_missing_from_test,"risk_train_class_counts":train_class_counts,"risk_test_class_counts":test_class_counts,"risk_confusion_matrix":cm,"risk_confusion_matrix_labels":class_names,"risk_walk_forward_cv":risk_cv,"baseline_comparison":baseline_comparison,"horizon_metrics":{str(h): horizon_metrics[h] for h in HORIZONS},"horizons_available":HORIZONS},"data_files":DATA_FILES,"forecast_feature_importance":forecast_feature_importance,"risk_feature_importance":risk_feature_importance,"numeric_feature_stats":numeric_feature_stats}
+    metadata={"pipeline_version":"real_monthly_v2","data_source_mode":DATA_SOURCE_MODE,"data_dir":str(DATA),"training_run":training_metadata_block,"training_row_count":training_metadata_block["training_row_count"],"test_row_count":training_metadata_block["test_row_count"],"model_version":training_metadata_block["model_version"],"feature_cols":feature_names,"numeric_features":num,"categorical_features":cat,"target":"next_month_bdry_market_proxy_delta_vs_bdry_lag1","target_transform":{"type":"delta_vs_last_known","reconstruct_level_as":"prediction = bdry_lag1 + model_output","reason":"RandomForest leaves cannot extrapolate beyond the training target range; BDRY trended well outside the training range by the test period, so predicting the level directly under-forecast by ~5x naive persistence's error. Predicting the (roughly stationary) change instead avoids the extrapolation ceiling. See README Known limitations."},"commodities":COMMODITIES,"bdry_history_12m": bdry_history,"origins":[p for p in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"]],"destinations":EAST_COAST,"routes":[f"{o}-{d}" for o in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"] for d in EAST_COAST],"shipment_modes":["Bulk Carrier","Charter"],"vessel_types":["Handysize","Supramax","Panamax","Capesize"],"latest_lookup":look,"congestion_feature_source_month":congestion_feature_source_month,"risk_classes":["low","medium","high"],"risk_thresholds":[float(q1),float(q2)],"risk_weights":RISK_WEIGHTS,"risk_methodology":"hybrid_score: volatility+rate_shock+trend_deviation+port_congestion+data_uncertainty, each percentile-ranked against training-period distribution, weighted-summed, then bucketed at train-only tertiles. (2026-09 fix) Classifier switched from plain RandomForestClassifier on the bucketed label to OrdinalRiskClassifier (regresses the continuous risk_score, buckets only the final prediction) after 'medium' measured 0% precision/recall under the old approach in the holdout and every walk-forward fold; has_portwatch_coverage/_congestion_pctile/_data_uncertainty were also added to the feature list (previously computed but unused by the model).","metrics":{"forecast_mae":round(float(mae),4),"risk_accuracy":round(float(acc),4),"risk_balanced_accuracy":round(float(balanced_acc),4),"risk_macro_f1":round(float(macro_f1),4),"risk_weighted_f1":round(float(weighted_f1),4),"risk_per_class":per_class_metrics,"risk_classes_missing_from_test":classes_missing_from_test,"risk_train_class_counts":train_class_counts,"risk_test_class_counts":test_class_counts,"risk_confusion_matrix":cm,"risk_confusion_matrix_labels":class_names,"risk_walk_forward_cv":risk_cv,"baseline_comparison":baseline_comparison,"horizon_metrics":{str(h): horizon_metrics[h] for h in HORIZONS},"horizons_available":HORIZONS},"data_files":DATA_FILES,"forecast_feature_importance":forecast_feature_importance,"risk_feature_importance":risk_feature_importance,"numeric_feature_stats":numeric_feature_stats}
     with open(MODELS/"metadata.json","w") as f: json.dump(metadata,f,indent=2)
     master.to_csv(DATA/"monthly_feature_table.csv",index=False)
     print(json.dumps(metadata["metrics"],indent=2)); print(f"Saved {len(master)} monthly port/commodity rows to {DATA/'monthly_feature_table.csv'}")
