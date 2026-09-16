@@ -115,6 +115,21 @@ function initializeSchema(dbPath) {
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA_SQL);
 
+  // Existing SQLite databases do not gain newly-added columns from
+  // CREATE TABLE IF NOT EXISTS. Apply the small set of additive migrations
+  // here, before the app imports the DB layer and starts serving requests.
+  const forecastColumns = db
+    .prepare("PRAGMA table_info(forecast_results)")
+    .all()
+    .map((column) => column.name);
+
+  if (!forecastColumns.includes("recommended_vessel_reason")) {
+    db.exec("ALTER TABLE forecast_results ADD COLUMN recommended_vessel_reason TEXT");
+  }
+  if (!forecastColumns.includes("port_data_warning")) {
+    db.exec("ALTER TABLE forecast_results ADD COLUMN port_data_warning TEXT");
+  }
+
   const insertVessel = db.prepare(
     "INSERT OR IGNORE INTO vessel_master (vessel_type, min_capacity_tons, max_capacity_tons) VALUES (?, ?, ?)"
   );

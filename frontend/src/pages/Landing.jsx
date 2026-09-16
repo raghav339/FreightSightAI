@@ -1,218 +1,209 @@
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  ArrowRight, TrendingUp, ShieldAlert, ShipWheel, History as HistoryIcon,
-  Activity, Anchor, Navigation, Package, Radar, Waves
-} from "lucide-react";
-import { Button } from "../components/ui/button.jsx";
-import { Badge } from "../components/ui/badge.jsx";
+import { ArrowRight, Compass, Anchor, Activity, Radar, Package, Database, Ship, ShieldAlert, FileClock } from "lucide-react";
+import { Link } from "react-router-dom";
+import HullLines from "../components/three/HullLines.jsx";
+import Stamp from "../components/ui/Stamp.jsx";
+import api from "../api/client.js";
 
-function useFeatures() {
-  return [
-    { icon: TrendingUp, title:"Rate Forecasting", body:"A RandomForestRegressor trained on lag, rolling-average, and calendar features predicts the freight rate (USD/ton) for your route and date.", accent:"text-signal", tag:"FORECAST" },
-    { icon: ShieldAlert, title:"Risk Classification", body:"A RandomForestClassifier labels each forecast low, medium, or high risk based on historical rate volatility on that route.", accent:"text-amber", tag:"RISK" },
-    { icon: ShipWheel, title:"Charter Recommendation", body:"Simple, explainable rules turn the forecast trend into a suggested chartering window and vessel type.", accent:"text-starboard", tag:"VESSEL" },
-    { icon: HistoryIcon, title:"History & Alerts", body:"Every forecast is saved. High-risk routes automatically raise an alert so nothing risky slips by unnoticed.", accent:"text-port", tag:"HISTORY" },
-  ];
-}
 
-const container={hidden:{},show:{transition:{staggerChildren:.08,delayChildren:.1}}};
-const item={hidden:{opacity:0,y:18},show:{opacity:1,y:0,transition:{duration:.55,ease:[.16,1,.3,1]}}};
+const features = [
+  { plate: "01", icon: Activity, title: "Rate Forecasting", model: "RandomForestRegressor", body: "Predicts freight rate movement from route history, lag and rolling signals, calendar features and the available market proxy." },
+  { plate: "02", icon: ShieldAlert, title: "Risk Classification", model: "RandomForestClassifier", body: "Translates historical route volatility into a low, medium or high market-risk read beside each forecast." },
+  { plate: "03", icon: Ship, title: "Charter Recommendation", model: "Rule ensemble", body: "Combines forecast direction with port and vessel constraints to suggest a chartering window and feasible class." },
+  { plate: "04", icon: FileClock, title: "History & Alerts", model: "Voyage log", body: "Persists forecast inputs and outputs and surfaces higher-risk results for follow-up and reporting." },
+];
 
-function MiniMetric({label,value,delta,icon:Icon}) {
+const pipeline = [
+  ["I", "Enter shipment details", "Choose commodity, loading port, destination, cargo and shipment date in the same language a chartering desk uses."],
+  ["II", "Validate and route the request", "The browser posts the shipment to the Express backend, which validates it and calls the Python forecasting service."],
+  ["III", "Generate the forecast", "Route-aware models and the market-proxy fallback produce rate, risk, feasibility and recommendation outputs."],
+  ["IV", "Persist the voyage record", "Forecasts can be stored in the configured backend database so history and alerts can be reviewed later."],
+  ["V", "Act on one defensible view", "Review the number, assumptions, constraints and caveats before fixing tonnage or a vessel."],
+];
+
+function CompassPlate() {
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-hull-600/70 bg-hull-900/70 p-4 transition-all duration-300 hover:-translate-y-1 hover:border-signal/30">
-      <div className="flex items-center justify-between">
-        <span className="fs-kicker">{label}</span>
-        <Icon className="h-4 w-4 text-slate-600 transition-colors group-hover:text-signal" />
+    <figure className="relative border border-ink/25 bg-parchment/70">
+      <span className="absolute -left-px -top-px h-3 w-3 border-l border-t border-ink/70" />
+      <span className="absolute -right-px -top-px h-3 w-3 border-r border-t border-ink/70" />
+      <span className="absolute -bottom-px -left-px h-3 w-3 border-b border-l border-ink/70" />
+      <span className="absolute -bottom-px -right-px h-3 w-3 border-b border-r border-ink/70" />
+
+      <div className="flex items-center justify-between border-b border-rule/60 px-4 py-2">
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-inksoft">plate 04 — hull lines · bulk carrier</span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">scale 1:2400</span>
       </div>
-      <div className="mt-2 flex items-end justify-between gap-2">
-        <span className="fs-number text-2xl">{value}</span>
-        <span className="font-mono text-[10px] text-starboard">{delta}</span>
+      <div className="relative h-[320px] sm:h-[400px] lg:h-[458px]">
+        <div className="chart-contour pointer-events-none absolute inset-0 opacity-50" />
+        <HullLines className="absolute inset-0" />
+        <div className="pointer-events-none absolute left-4 top-4 font-mono text-[9px] uppercase leading-relaxed tracking-[0.18em] text-inksoft">
+          <div>frames 0–17</div>
+          <div className="text-rule">waterline in vermilion</div>
+        </div>
+        <div className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 text-right font-mono text-[9px] uppercase leading-relaxed tracking-[0.18em] sm:block">
+          <div className="flex items-center justify-end gap-2"><span className="h-px w-10 bg-ink/40" /><span>dwt 78 000 t</span></div>
+          <div className="mt-2 flex items-center justify-end gap-2"><span className="h-px w-6 bg-ink/40" /><span className="text-inksoft">draft 14.2 m</span></div>
+          <div className="mt-2 flex items-center justify-end gap-2"><span className="h-px w-14 bg-ink/40" /><span className="text-inksoft">beam 32.2 m</span></div>
+        </div>
+        <div className="pointer-events-none absolute bottom-5 left-6 right-6 hidden items-center gap-3 sm:flex">
+          <span className="h-2 w-px bg-ink/60" /><span className="h-px flex-1 bg-ink/30" />
+          <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-inksoft">loa 229 m</span>
+          <span className="h-px flex-1 bg-ink/30" /><span className="h-2 w-px bg-ink/60" />
+        </div>
       </div>
-    </div>
+      <figcaption className="flex flex-wrap items-center justify-between gap-2 border-t border-rule/60 px-4 py-2">
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-inksoft">lat 20°15′N · lon 86°40′E — approach paradip</span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">move pointer to look around</span>
+      </figcaption>
+    </figure>
   );
 }
 
-function DigitalTwin() {
+function LaneStrip() {
+  const [lanes, setLanes] = useState([]);
+  const [status, setStatus] = useState("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRecentLanes = async () => {
+      try {
+        const { data } = await api.get("/recent-voyages", { timeout: 12000 });
+        if (cancelled) return;
+        const rows = Array.isArray(data?.voyages) ? data.voyages : [];
+        setLanes(rows);
+        setStatus(rows.length ? "ready" : "empty");
+      } catch (error) {
+        if (cancelled) return;
+        console.warn("Could not load recent voyage tape:", error?.message || error);
+        setStatus("unavailable");
+      }
+    };
+
+    loadRecentLanes();
+    const refresh = window.setInterval(loadRecentLanes, 60000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refresh);
+    };
+  }, []);
+
+  const rows = useMemo(() => {
+    if (!lanes.length) return [];
+    return [...lanes, ...lanes];
+  }, [lanes]);
+
+  const renderStatus = () => {
+    if (status === "loading") return "loading recent records";
+    if (status === "unavailable") return "live tape unavailable";
+    if (status === "empty") return "awaiting first recorded voyage";
+    return `${lanes.length} recent recorded voyage${lanes.length === 1 ? "" : "s"}`;
+  };
+
   return (
-    <div className="relative h-[390px] overflow-hidden rounded-[1.75rem] border border-hull-500/70 bg-[#070c14] shadow-glow-lg perspective-1400">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_52%_48%,rgba(34,211,196,.10),transparent_35%),linear-gradient(180deg,rgba(255,255,255,.025),transparent)]" />
-      <div className="absolute inset-0 bg-grid opacity-30" />
-      <div className="absolute left-1/2 top-1/2 h-[290px] w-[520px] -translate-x-1/2 -translate-y-1/2 rotate-[10deg] skew-y-[-8deg] rounded-[50%] border border-signal/10 shadow-[0_0_80px_rgba(34,211,196,.07)_inset]" />
-      <div className="absolute left-1/2 top-1/2 h-[210px] w-[400px] -translate-x-1/2 -translate-y-1/2 rotate-[10deg] skew-y-[-8deg] rounded-[50%] border border-signal/10" />
-
-      <div className="absolute left-7 top-6 flex items-center gap-2 rounded-full border border-hull-500/70 bg-hull-900/80 px-3 py-1.5 backdrop-blur-md">
-        <span className="h-1.5 w-1.5 rounded-full bg-starboard fs-glow-dot" />
-        <span className="font-mono text-[9px] uppercase tracking-[.2em] text-slate-400">LIVE FREIGHT DIGITAL TWIN</span>
+    <section className="overflow-hidden border-b border-rule/70 bg-paper" aria-label="Recent recorded voyage tape">
+      <div className="flex items-center gap-4 border-b border-rule/50 px-5 py-2 lg:px-8">
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">voyage log · live tape</span>
+        <span className="h-px flex-1 bg-rule/45" />
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">{renderStatus()}</span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">USD / ton</span>
       </div>
-      <div className="absolute right-6 top-6 rounded-lg border border-hull-600/70 bg-hull-900/70 px-3 py-2 font-mono text-[9px] text-slate-500 backdrop-blur-md">
-        AIS NETWORK · ONLINE
-      </div>
-
-      {/* route beams */}
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 700 390" fill="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="beam" x1="0" y1="0" x2="1" y2="0">
-            <stop stopColor="#22D3C4" stopOpacity="0"/>
-            <stop offset=".48" stopColor="#7CF0E4" stopOpacity=".9"/>
-            <stop offset="1" stopColor="#FFB020" stopOpacity=".08"/>
-          </linearGradient>
-        </defs>
-        <path d="M88 292 C190 92 410 330 608 98" stroke="url(#beam)" strokeWidth="2" strokeDasharray="7 10" className="animate-dash-flow"/>
-        <path d="M88 292 C190 92 410 330 608 98" stroke="#22D3C4" strokeOpacity=".12" strokeWidth="16" />
-        <path d="M115 308 C240 160 405 330 575 126" stroke="#22D3C4" strokeOpacity=".10" strokeWidth="1" strokeDasharray="2 12"/>
-      </svg>
-
-      {/* ports */}
-      <div className="absolute bottom-[68px] left-[9%]">
-        <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-signal/50 bg-signal/10 text-signal shadow-glow">
-          <Anchor className="h-5 w-5" />
-          <span className="absolute inset-[-9px] rounded-full border border-signal/20 animate-pulse-ring" />
-        </div>
-        <div className="mt-2 font-mono text-[9px] uppercase tracking-widest text-slate-500">GLADSTONE</div>
-      </div>
-
-      <div className="absolute right-[8%] top-[24%]">
-        <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-amber/50 bg-amber/10 text-amber">
-          <Navigation className="h-5 w-5" />
-          <span className="absolute inset-[-9px] rounded-full border border-amber/20 animate-pulse-ring" />
-        </div>
-        <div className="mt-2 text-right font-mono text-[9px] uppercase tracking-widest text-slate-500">VISAKHAPATNAM</div>
-      </div>
-
-      {/* 3D-ish vessel */}
-      <motion.div
-        animate={{ x:[-10,14,-10], y:[3,-8,3], rotate:[-2,2,-2] }}
-        transition={{duration:5,repeat:Infinity,ease:"easeInOut"}}
-        className="absolute left-[48%] top-[48%] preserve-3d"
-      >
-        <div className="relative h-11 w-20 rotate-[-8deg]">
-          <div className="absolute bottom-1 left-1 h-5 w-16 skew-x-[-20deg] rounded-b-[12px] border border-slate-500/50 bg-gradient-to-b from-slate-500 to-slate-800 shadow-[8px_10px_18px_rgba(0,0,0,.55)]" />
-          <div className="absolute left-6 top-1 h-5 w-9 rounded-sm border border-slate-400/30 bg-slate-700/80" />
-          <div className="absolute left-9 top-[-2px] h-2 w-4 rounded-sm bg-amber/80" />
-          <span className="absolute -bottom-4 left-7 h-px w-24 bg-gradient-to-r from-signal/0 via-signal/50 to-signal/0" />
-        </div>
-      </motion.div>
-
-      {/* floating telemetry */}
-      <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 gap-2">
-        {[
-          ["ETA","14:35"],
-          ["RISK","LOW"],
-          ["LOAD","82%"]
-        ].map(([a,b])=>(
-          <div key={a} className="rounded-xl border border-hull-600/70 bg-hull-900/80 px-3 py-2 backdrop-blur-md">
-            <div className="font-mono text-[8px] uppercase tracking-widest text-slate-600">{a}</div>
-            <div className="mt-0.5 font-mono text-[10px] font-semibold text-paper-100">{b}</div>
+      <div className="overflow-hidden">
+        {rows.length ? (
+          <div className="lane-scroll flex w-max">
+            {rows.map((voyage, index) => {
+              const risk = String(voyage.risk_label || "unknown").toLowerCase();
+              const riskClass = risk === "high"
+                ? "text-vermilion"
+                : risk === "medium"
+                ? "text-brass"
+                : risk === "low"
+                ? "text-kelp"
+                : "text-inksoft";
+              return (
+                <div key={`${voyage.result_id ?? voyage.route}-${index}`} className="flex shrink-0 items-center gap-4 border-r border-rule/50 px-6 py-3">
+                  <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-ink">{voyage.route}</span>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-rule">{voyage.commodity || "—"}</span>
+                  <span className="font-mono text-[11px] tabular text-ink">{`$${Number(voyage.predicted_freight_rate_usd_per_ton).toFixed(2)}`}</span>
+                  <span className={`font-mono text-[9px] uppercase tracking-[0.17em] ${riskClass}`}>{risk}</span>
+                </div>
+              );
+            })}
           </div>
-        ))}
+        ) : (
+          <div className="px-5 py-3 font-mono text-[9px] uppercase tracking-[0.16em] text-inksoft lg:px-8">
+            No recorded forecast voyages yet. Run a forecast to populate the tape from stored results.
+          </div>
+        )}
       </div>
-
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-signal/[.035] to-transparent animate-scan" />
-    </div>
+    </section>
   );
 }
 
 export default function Landing() {
-  const FEATURES=useFeatures();
   return (
-    <div className="flex flex-col gap-12 sm:gap-16">
-      <section className="relative overflow-hidden rounded-[2rem] border border-hull-600/80 bg-hull-800/45 shadow-[0_35px_100px_-45px_rgba(0,0,0,.95)]">
-        <div className="absolute inset-0 bg-grid opacity-25" />
-        <div className="absolute -right-40 -top-40 h-[32rem] w-[32rem] rounded-full bg-signal/8 blur-[120px]" />
-        <div className="absolute -bottom-48 left-1/3 h-[28rem] w-[28rem] rounded-full bg-amber/5 blur-[130px]" />
-
-        <div className="relative grid gap-8 p-5 sm:p-8 lg:grid-cols-[.92fr_1.08fr] lg:gap-10 lg:p-10 xl:p-12">
-          <motion.div initial="hidden" animate="show" variants={container} className="flex flex-col justify-center gap-6 lg:py-6">
-            <motion.div variants={item} className="flex flex-wrap items-center gap-2">
-              <Badge variant="signal" dot>{"Bulk cargo · India east coast"}</Badge>
-              <span className="rounded-full border border-hull-600 bg-hull-900/70 px-3 py-1.5 font-mono text-[9px] uppercase tracking-[.18em] text-slate-500">
-                SIH26006 · EAST COAST FREIGHT
-              </span>
+    <div>
+      <section className="relative border-b border-rule/70">
+        <div className="chart-contour pointer-events-none absolute -right-40 -top-20 hidden h-[620px] w-[620px] opacity-35 lg:block" />
+        <div className="mx-auto grid max-w-[1240px] gap-10 px-5 py-12 lg:grid-cols-12 lg:gap-8 lg:px-8 lg:py-16">
+          <div className="flex flex-col justify-center lg:col-span-5">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .28 }}>
+              <Stamp tone="vermilion"><Compass className="h-3 w-3" />bulk cargo · india east coast</Stamp>
             </motion.div>
-
-            <motion.div variants={item}>
-              <h1 className="font-display text-[2.65rem] font-semibold leading-[.98] tracking-[-.055em] text-paper-50 sm:text-5xl xl:text-[4.2rem]">
-                See the freight.
-                <br />
-                <span className="text-gradient-signal">Predict the move.</span>
-              </h1>
-              <p className="mt-5 max-w-xl text-[.98rem] leading-7 text-slate-400">
-                {"FreightSight AI predicts freight-rate movement on bulk cargo routes to India's East Coast, flags market risk, and recommends when to charter and which vessel class to use — built for procurement and logistics teams who need a fast, data-backed answer."}
-              </p>
-            </motion.div>
-
-            <motion.div variants={item} className="flex flex-wrap gap-3">
-              <Button as={Link} to="/predict" size="default" className="rounded-xl px-6">
-                {"Run a forecast"} <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button as={Link} to="/compare" variant="outline" className="rounded-xl">
-                Explore routes
-              </Button>
-            </motion.div>
-
-            <motion.div variants={item} className="grid max-w-xl grid-cols-3 gap-2 border-t border-hull-600/60 pt-5">
-              {[
-                ["Model","Random Forest"],
-                ["Signal","BDRY · 12mo"],
-                ["Coverage","Coal · Ore · Minerals"]
-              ].map(([a,b])=>(
-                <div key={a}>
-                  <div className="fs-kicker text-slate-600">{a}</div>
-                  <div className="mt-1 font-mono text-xs text-paper-100">{b}</div>
-                </div>
-              ))}
-            </motion.div>
-          </motion.div>
-
-          <motion.div
-            initial={{opacity:0,scale:.97,y:10}}
-            animate={{opacity:1,scale:1,y:0}}
-            transition={{duration:.8,ease:[.16,1,.3,1],delay:.15}}
-            className="lg:py-2"
-          >
-            <DigitalTwin />
-          </motion.div>
-        </div>
-      </section>
-
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MiniMetric label="Freight network" value="11" delta="LOAD PORTS" icon={Anchor}/>
-        <MiniMetric label="East coast" value="10" delta="DESTINATIONS" icon={Waves}/>
-        <MiniMetric label="Prediction" value="12M" delta="HISTORY" icon={Activity}/>
-        <MiniMetric label="Signals" value="24/7" delta="MONITORED" icon={Radar}/>
-      </section>
-
-      <motion.section initial="hidden" whileInView="show" viewport={{once:true,amount:.15}} variants={container}>
-        <div className="mb-5 flex items-end justify-between gap-4">
-          <div>
-            <div className="fs-kicker">OPERATIONS LAYER</div>
-            <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight text-paper-50 sm:text-3xl">One view of the voyage</h2>
+            <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .3, delay: .05 }} className="mt-6 font-display text-[44px] font-semibold leading-[.98] tracking-[-.025em] sm:text-[58px] lg:text-[62px]">
+              See the freight.
+              <span className="block italic text-vermilion">Predict the move.</span>
+            </motion.h1>
+            <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .3, delay: .1 }} className="mt-6 max-w-[46ch] text-[15px] leading-relaxed text-inksoft">
+              FreightSight forecasts freight rates on bulk cargo routes into India&apos;s East Coast, reads market risk, and recommends when to charter and which vessel class to fix — with the route, data source and feasibility assumptions kept visible.
+            </motion.p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link to="/predict" className="group inline-flex items-center gap-2.5 border border-ink bg-ink px-5 py-3 font-mono text-[11px] uppercase tracking-[0.17em] text-paper hover:border-vermilion hover:bg-vermilion">run a forecast <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" /></Link>
+              <Link to="/compare" className="inline-flex items-center border border-ink/35 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.17em] text-ink hover:border-ink hover:bg-ink/5">explore routes</Link>
+            </div>
+            <dl className="mt-12 grid max-w-xl grid-cols-3 border-t border-rule/70 pt-4">
+              {[["model","Random Forest"],["trained on","BDRY · 12M rows"],["cargo","Coal · Ore · Minerals"]].map(([a,b]) => <div key={a} className="border-r border-rule/50 pr-3 last:border-0"><dt className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">{a}</dt><dd className="mt-1 font-mono text-[11px] leading-tight text-ink">{b}</dd></div>)}
+            </dl>
           </div>
-          <Package className="hidden h-6 w-6 text-slate-700 sm:block"/>
+          <motion.div initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .35, delay: .08 }} className="lg:col-span-7">
+            <CompassPlate />
+          </motion.div>
         </div>
+      </section>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map(({icon:Icon,title,body,accent,tag})=>(
-            <motion.div key={title} variants={item} className="group">
-              <div className="fs-panel h-full rounded-2xl p-5 transition-all duration-300 group-hover:-translate-y-1 group-hover:border-signal/30">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[9px] tracking-[.2em] text-slate-600">{tag}</span>
-                  <span className={`flex h-9 w-9 items-center justify-center rounded-xl bg-hull-700/80 ${accent}`}>
-                    <Icon className="h-4.5 w-4.5" strokeWidth={2}/>
-                  </span>
-                </div>
-                <h3 className="mt-5 font-display text-base font-semibold text-paper-50">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-400">{body}</p>
-                <div className="mt-5 h-px overflow-hidden bg-hull-600">
-                  <div className="h-full w-1/3 bg-signal/50 transition-all duration-700 group-hover:w-full"/>
-                </div>
-              </div>
-            </motion.div>
-          ))}
+      <section className="border-b border-rule/70 bg-parchment">
+        <div className="mx-auto grid max-w-[1240px] gap-6 px-5 py-8 lg:grid-cols-12 lg:items-end lg:gap-8 lg:px-8">
+          <div className="lg:col-span-4"><span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">coverage</span><div className="mt-2 flex items-baseline gap-3"><span className="font-display text-[56px] font-semibold leading-none tabular">11</span><span className="pb-2 font-mono text-[11px] uppercase tracking-[0.16em]">loading ports</span></div><p className="mt-1 text-[13px] text-inksoft">Australia · Indonesia · Mozambique · Russia · US</p></div>
+          <div className="grid gap-y-5 sm:grid-cols-3 sm:gap-x-6 lg:col-span-8">
+            {[["East-coast destinations","10","Paradip to Sagar Sandheads"],["Dataset rows","12M","BDRY + route history"],["Monitoring","24/7","High-risk results raise alerts"]].map(([a,b,c]) => <div key={a} className="border-t border-rule/60 pt-3 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0"><div className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">{a}</div><div className="mt-1 font-display text-[28px] font-semibold leading-none tabular">{b}</div><p className="mt-1 text-[12px] leading-snug text-inksoft">{c}</p></div>)}
+          </div>
         </div>
-      </motion.section>
+      </section>
+
+      <LaneStrip />
+
+      <section className="border-b border-rule/70">
+        <div className="mx-auto max-w-[1240px] px-5 py-14 lg:px-8 lg:py-18">
+          <div className="mb-7 flex items-end justify-between"><div><div className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">operations layer</div><h2 className="mt-2 font-display text-[34px] font-semibold leading-tight tracking-[-.01em] sm:text-[42px]">One view of the voyage</h2></div><Package className="hidden h-6 w-6 text-rule sm:block" /></div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {features.map(({ plate, icon: Icon, title, model, body }) => <motion.article key={plate} whileHover={{ y: -3 }} className="relative border border-rule/60 bg-parchment/70 p-5"><div className="flex items-center justify-between"><span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">plate {plate}</span><span className="flex h-9 w-9 items-center justify-center border border-rule/50 text-vermilion"><Icon className="h-4 w-4" /></span></div><h3 className="mt-6 font-display text-[20px] font-semibold">{title}</h3><p className="mt-2 text-[13px] leading-relaxed text-inksoft">{body}</p><div className="mt-5 border-t border-rule/50 pt-3 font-mono text-[8px] uppercase tracking-[0.16em] text-rule">{model}</div></motion.article>)}
+          </div>
+        </div>
+      </section>
+
+      <section className="border-b border-rule/70 bg-parchment">
+        <div className="mx-auto grid max-w-[1240px] gap-10 px-5 py-14 lg:grid-cols-12 lg:gap-12 lg:px-8 lg:py-18">
+          <div className="lg:col-span-4"><div className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">how it works</div><h2 className="mt-2 font-display text-[34px] font-semibold leading-tight sm:text-[40px]">From shipment details to a chartering decision</h2><p className="mt-4 max-w-[40ch] text-[14px] leading-relaxed text-inksoft">Five visible steps keep the model useful without pretending the forecast is a broker quote.</p></div>
+          <ol className="relative lg:col-span-8"><span className="absolute bottom-3 left-[13px] top-3 w-px bg-rule/60" aria-hidden="true" />{pipeline.map(([n,title,body],i) => <motion.li key={n} initial={{ opacity:0, x:-8 }} whileInView={{ opacity:1, x:0 }} viewport={{ once:true, margin:'-40px' }} transition={{duration:.25,delay:i*.04}} className="relative grid grid-cols-[28px_1fr] gap-x-5 pb-8 last:pb-0"><span className="relative z-10 flex h-7 w-7 items-center justify-center border border-ink/45 bg-paper font-mono text-[10px]">{n}</span><div className="pt-1"><h3 className="font-display text-[20px] font-semibold leading-snug">{title}</h3><p className="mt-1.5 max-w-[62ch] text-[14px] leading-relaxed text-inksoft">{body}</p></div></motion.li>)}</ol>
+        </div>
+      </section>
+
+      <section className="relative overflow-hidden border-b border-rule/70">
+        <div className="chart-hatch pointer-events-none absolute inset-y-0 right-0 w-1/3 opacity-60" />
+        <div className="relative mx-auto flex max-w-[1240px] flex-col gap-6 px-5 py-14 lg:flex-row lg:items-center lg:justify-between lg:px-8"><div><span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">next step</span><p className="mt-2 max-w-[30ch] font-display text-[30px] font-semibold leading-tight sm:text-[38px]">Plot a lane and get the rate, the risk and the window.</p></div><Link to="/predict" className="group inline-flex self-start items-center gap-2.5 border border-ink bg-ink px-5 py-3 font-mono text-[11px] uppercase tracking-[0.17em] text-paper hover:border-vermilion hover:bg-vermilion lg:self-auto">open forecast console <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" /></Link></div>
+      </section>
     </div>
   );
 }

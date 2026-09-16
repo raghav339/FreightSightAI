@@ -15,7 +15,8 @@ function useSteps() {
 export default function About() {
   const STEPS = useSteps();
   return (
-    <section className="flex flex-col gap-8">
+    <section className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8 lg:py-14">
+      <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1.5">
         <span className="font-mono text-xs uppercase tracking-[0.2em] text-signal/80">{"How it works"}</span>
         <h1 className="font-display text-2xl font-semibold tracking-tight text-paper-50 sm:text-3xl">
@@ -49,6 +50,7 @@ export default function About() {
       <Card className="p-6 text-sm leading-relaxed text-slate-400">
         {"Built for"} <span className="font-semibold text-paper-100">SIH26006</span> — {"Smart India Hackathon 2026, focused on freight-rate forecasting for bulk cargo shipping to India's East Coast."}
       </Card>
+      </div>
     </section>
   );
 }

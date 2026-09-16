@@ -14,54 +14,41 @@ import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
 
 function PageShell({ children }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-    >
-      {children}
-    </motion.div>
-  );
+  return <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.22 }}>{children}</motion.div>;
 }
 
 export default function App() {
   const location = useLocation();
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
-  }, [location.pathname]);
+  useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [location.pathname]);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-transparent">
-      {/* FreightSight atmosphere: restrained grid + navigation-light glows */}
-      <div className="pointer-events-none fixed inset-0 -z-10 bg-grid opacity-[0.16] mask-fade-b" />
-      <div className="pointer-events-none fixed -top-48 left-[18%] -z-10 h-[560px] w-[560px] rounded-full bg-signal/8 blur-[150px]" />
-      <div className="pointer-events-none fixed top-[35%] -right-48 -z-10 h-[520px] w-[520px] rounded-full bg-amber/5 blur-[150px]" />
-
-      <Navbar />
-      <WakingBanner />
-
-      <main className="relative mx-auto w-full max-w-7xl px-5 pb-24 pt-8 sm:px-7 lg:px-9">
-        <AnimatePresence mode="wait">
-          <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<PageShell><Landing /></PageShell>} />
-            <Route path="/predict" element={<PageShell><Predict /></PageShell>} />
-            <Route path="/coa-optimizer" element={<PageShell><COAOptimizer /></PageShell>} />
-            <Route path="/compare" element={<PageShell><CompareOrigins /></PageShell>} />
-            <Route path="/idle-vessel" element={<PageShell><IdleVesselFinder /></PageShell>} />
-            <Route path="/history" element={<PageShell><History /></PageShell>} />
-            <Route path="/about" element={<PageShell><About /></PageShell>} />
-            <Route path="/login" element={<PageShell><Login /></PageShell>} />
-            <Route path="/signup" element={<PageShell><Signup /></PageShell>} />
-          </Routes>
-        </AnimatePresence>
-      </main>
-
-      <footer className="relative border-t border-hull-700/70 py-8 text-center font-mono text-[0.72rem] uppercase tracking-[0.2em] text-slate-600">
-        FreightSight AI · SIH26006 · Bulk Cargo Chartering Console
-      </footer>
+    <div className="paper-grain relative min-h-screen overflow-x-clip bg-paper text-ink">
+      <div className="chart-grid-fine pointer-events-none fixed inset-0 z-0 opacity-70" aria-hidden="true" />
+      <div className="relative z-10 flex min-h-screen flex-col">
+        <Navbar />
+        <WakingBanner />
+        <main className="flex-1">
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route path="/" element={<PageShell><Landing /></PageShell>} />
+              <Route path="/predict" element={<PageShell><Predict /></PageShell>} />
+              <Route path="/coa-optimizer" element={<PageShell><COAOptimizer /></PageShell>} />
+              <Route path="/compare" element={<PageShell><CompareOrigins /></PageShell>} />
+              <Route path="/idle-vessel" element={<PageShell><IdleVesselFinder /></PageShell>} />
+              <Route path="/history" element={<PageShell><History /></PageShell>} />
+              <Route path="/about" element={<PageShell><About /></PageShell>} />
+              <Route path="/login" element={<PageShell><Login /></PageShell>} />
+              <Route path="/signup" element={<PageShell><Signup /></PageShell>} />
+            </Routes>
+          </AnimatePresence>
+        </main>
+        <footer className="border-t border-rule/70 bg-parchment">
+          <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">FreightSight AI · SIH26006 · bulk cargo chartering console</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">plate series 2026 · paper stock A3</span>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }

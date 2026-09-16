@@ -1,5 +1,20 @@
 """Ordinal risk classifier for FreightSight.
 
+ROLLING RECENCY CALIBRATION (2026-09, follow-up fix): calibrate_thresholds
+(below) originally used the regressor's OOB predictions across the ENTIRE
+training set to fix q1/q2 — every year of history weighted equally. That
+static, whole-history calibration is the second half of the "risk always
+comes back high" bug (the first half was risk_score's own components
+clipping against a frozen train-only percentile reference — see train.py).
+Even with risk_score itself made regime-adaptive, a threshold calibrated
+once and never revisited still drifts stale over a long deployment. Passing
+sample_months to fit() plus calibration_recency_months at construction
+restricts calibration to the most recent N months of the training window
+(falling back to the full OOB set if that recent slice has too few rows),
+so thresholds track the current regime rather than an average over years of
+history. This is additive: sample_months is optional and the class behaves
+exactly as before when it isn't supplied.
+
 WHY THIS FILE EXISTS (bug fix, 2026-09):
 
 The risk model was a plain RandomForestClassifier trained directly on the
@@ -35,12 +50,14 @@ elsewhere for forecast uncertainty bounds — not a fabricated confidence
 score.
 """
 import numpy as np
+import pandas as pd
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.ensemble import RandomForestRegressor
 
 
 class OrdinalRiskClassifier(BaseEstimator, ClassifierMixin):
-    def __init__(self, thresholds, class_names=("low", "medium", "high"), calibrate_thresholds=True, **rf_kwargs):
+    def __init__(self, thresholds, class_names=("low", "medium", "high"), calibrate_thresholds=True,
+                 calibration_recency_months=None, **rf_kwargs):
         """thresholds: (q1, q2) — the train-only tertile cutpoints of the
         RAW risk_score, i.e. the same cutpoints used to build the
         low/medium/high ground-truth labels. Kept and reported as-is
@@ -63,6 +80,17 @@ class OrdinalRiskClassifier(BaseEstimator, ClassifierMixin):
         see it) instead of the raw label distribution. This recenters the
         low/medium/high split on what the model actually outputs, which is
         what matters for a 3-way bucket decision.
+
+        calibration_recency_months: optional. When set (and sample_months
+        is passed to fit()), the OOB quantile calibration above uses only
+        rows whose month falls within the trailing N months of the
+        training window, instead of averaging over the whole training
+        history. A single calibration fit years ago drifts as the market
+        regime shifts; restricting to the recent slice keeps the
+        low/medium/high split matched to current conditions. Falls back to
+        the full OOB set automatically if the recent slice has fewer than
+        10 rows (e.g. a short training window). None (default) preserves
+        the original whole-history behaviour.
         rf_kwargs: forwarded to the underlying RandomForestRegressor
         (n_estimators, random_state, n_jobs, etc. — no class_weight, since
         this is regression, not classification).
@@ -70,12 +98,18 @@ class OrdinalRiskClassifier(BaseEstimator, ClassifierMixin):
         self.thresholds = thresholds
         self.class_names = class_names
         self.calibrate_thresholds = calibrate_thresholds
+        self.calibration_recency_months = calibration_recency_months
         self.rf_kwargs = rf_kwargs
 
-    def fit(self, X, risk_score):
+    def fit(self, X, risk_score, sample_months=None):
         """risk_score: the CONTINUOUS hybrid score (not the bucketed label).
         Fitting against the continuous target is the whole point of this
-        class — see module docstring."""
+        class — see module docstring.
+
+        sample_months: optional, one timestamp-like value per row of X,
+        used only when calibration_recency_months is set, to restrict
+        threshold calibration to the most recent slice of the training
+        window (see __init__)."""
         rf_kwargs = dict(self.rf_kwargs)
         if self.calibrate_thresholds:
             rf_kwargs["oob_score"] = True
@@ -91,9 +125,28 @@ class OrdinalRiskClassifier(BaseEstimator, ClassifierMixin):
             # A handful of rows can lack OOB coverage with few trees/small n
             # (every tree happened to bootstrap them in) — drop those, not
             # the whole calibration.
-            oob = oob[np.isfinite(oob)]
-            if len(oob) >= 10:
-                self.thresholds_ = tuple(np.quantile(oob, [1 / 3, 2 / 3]))
+            finite_mask = np.isfinite(oob)
+            cal_mask = finite_mask
+
+            if self.calibration_recency_months is not None and sample_months is not None:
+                months = pd.to_datetime(np.asarray(sample_months))
+                cutoff = months.max() - pd.DateOffset(months=self.calibration_recency_months)
+                # `months >= cutoff` already returns a plain ndarray (a
+                # DatetimeIndex compared against a scalar Timestamp does
+                # NOT return another DatetimeIndex), so wrap with
+                # np.asarray directly rather than calling .to_numpy() on
+                # the comparison result, which doesn't have that method.
+                recent_mask = np.asarray(months >= cutoff)
+                combined_mask = finite_mask & recent_mask
+                # Only use the recent slice if it actually has enough rows
+                # to calibrate against; otherwise silently fall back to the
+                # full OOB set rather than calibrating on too few points.
+                if combined_mask.sum() >= 10:
+                    cal_mask = combined_mask
+
+            oob_cal = oob[cal_mask]
+            if len(oob_cal) >= 10:
+                self.thresholds_ = tuple(np.quantile(oob_cal, [1 / 3, 2 / 3]))
         return self
 
     def _bucket(self, scores):

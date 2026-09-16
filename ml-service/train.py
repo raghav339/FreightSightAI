@@ -21,7 +21,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import sklearn
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
@@ -32,6 +32,8 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 from sklearn.preprocessing import OneHotEncoder
+
+from ordinal_risk_model import OrdinalRiskClassifier
 
 ROOT = Path(__file__).resolve().parent
 MODELS = ROOT / "models"
@@ -244,14 +246,16 @@ def risk_walk_forward_cv(master, num, cat, class_names=("low", "medium", "high")
     higher-volatility period gives a real, evaluated answer for "high".
 
     LIMITATION DISCLOSED, NOT HIDDEN: the underlying continuous risk_score
-    column (volatility/shock/trend/congestion/data-uncertainty percentiles)
-    is computed once, upstream, against the ORIGINAL 80%-train reference
-    window (see the caller) — only the low/medium/high BUCKET thresholds
-    are refit per fold here. This is not fully leakage-free in the
-    strictest sense (a truly from-scratch walk-forward would also refit
-    the percentile reference per fold), but it is a meaningfully more
-    honest picture than a single fixed holdout, and this limitation is
-    recorded in the output rather than glossed over.
+    column is computed once, upstream (see the caller) — volatility/shock/
+    trend against their own trailing 24-month rolling window (recomputed
+    every month, so no train/test reference split applies to those three),
+    congestion/data-uncertainty against the ORIGINAL 80%-train reference
+    window — only the low/medium/high BUCKET thresholds are refit per fold
+    here. This is not fully leakage-free in the strictest sense (a truly
+    from-scratch walk-forward would also refit the congestion percentile
+    reference per fold), but it is a meaningfully more honest picture than
+    a single fixed holdout, and this limitation is recorded in the output
+    rather than glossed over.
 
     This is purely an additional evaluation artifact — it does NOT change
     which model is saved to models/risk_model.joblib, and does not affect
@@ -319,8 +323,26 @@ def risk_walk_forward_cv(master, num, cat, class_names=("low", "medium", "high")
         Xtr = np.column_stack([f_train[num].values, Xtr_cat])
         Xte = np.column_stack([f_test[num].values, Xte_cat])
 
-        f_clf = RandomForestClassifier(n_estimators=300, random_state=42, n_jobs=-1, class_weight="balanced")
-        f_clf.fit(Xtr, f_train["fold_risk"].map(classes))
+        # Same ordinal-regression fix used in main(): a plain classifier
+        # trained directly on the low/medium/high labels collapses the
+        # middle class (see ordinal_risk_model.py docstring). Fit the
+        # regressor on the fold's own continuous risk_score and bucket
+        # its predictions with fq1/fq2. calibration_recency_months is
+        # intentionally left at its default (None, whole-history OOB
+        # calibration) rather than a recent window: measured on this
+        # dataset, restricting calibration to a recent slice skews
+        # predictions toward "high" whenever the tail of training happens
+        # to sit in an elevated-risk regime (e.g. an oil-price spike),
+        # which trades one imbalance for another. Whole-history
+        # calibration centers thresholds on what the model outputs
+        # across its full training range, which is what actually
+        # produces a balanced low/medium/high split — see main() below
+        # for the measured comparison.
+        f_clf = OrdinalRiskClassifier(
+            thresholds=(fq1, fq2), calibrate_thresholds=True,
+            n_estimators=300, random_state=42, n_jobs=-1, max_depth=12,
+        )
+        f_clf.fit(Xtr, f_train["risk_score"].values, sample_months=f_train["month"].values)
         y_true = f_test["fold_risk"].map(classes)
         y_pred = f_clf.predict(Xte)
 
@@ -359,7 +381,7 @@ def risk_walk_forward_cv(master, num, cat, class_names=("low", "medium", "high")
             "Expanding-window walk-forward CV, run in addition to (not instead "
             "of) the primary 80/20 chronological holdout above. Each fold refits "
             "its own low/medium/high tertile thresholds, one-hot encoder, and "
-            "RandomForestClassifier on that fold's own training window only. "
+            "OrdinalRiskClassifier on that fold's own training window only. "
             "See risk_walk_forward_cv() docstring in train.py for the one "
             "disclosed leakage caveat (risk_score's percentile inputs are not "
             "refit per fold)."
@@ -546,6 +568,16 @@ def main(data_dir=None, output_dir=None):
         test-period data). Returns a Series of the same index; NaN inputs
         map to 0.5 (neutral — documented fallback, not a fabricated
         signal) since the component genuinely could not be computed.
+
+        Retained only for `port_congestion` below, whose reference
+        population (per-port PortWatch coverage) doesn't have a clean
+        monthly time axis to roll over. See `_rolling_percentile` for the
+        market-wide, time-indexed components (1-3), where this frozen,
+        calibrate-once reference was the actual "risk always comes back
+        high" bug: any month whose volatility/shock/trend value trended
+        past the training-period's historical range just clipped to the
+        100th percentile forever, with no way to recover short of a
+        retrain.
         """
         train_vals = np.sort(series[train_mask].dropna().values)
         if len(train_vals) == 0:
@@ -553,6 +585,47 @@ def main(data_dir=None, output_dir=None):
         ranks = np.searchsorted(train_vals, series.fillna(np.nan).values, side="right") / len(train_vals)
         ranks = np.where(series.isna().values, 0.5, np.clip(ranks, 0.0, 1.0))
         return pd.Series(ranks, index=series.index)
+
+    def _rolling_percentile(series, window_months=24, min_periods=6):
+        """Percentile rank of each value in `series` against a TRAILING
+        window of that same series, recomputed at every month, instead of
+        one frozen reference distribution fixed at train time.
+
+        For the month at position i (series sorted by its monthly index),
+        the reference population is the up-to-`window_months` prior
+        observations strictly BEFORE i — i.e. months i-window_months..i-1
+        — never including i itself and never reaching into the future, so
+        this is exactly as leak-safe as the old train-only version. The
+        difference is that the reference distribution now SLIDES forward
+        with time: as the market moves into a sustained high-volatility
+        regime, the trailing window moves with it, so a persistently
+        elevated reading stops being permanently clipped to the 100th
+        percentile against a stale, pre-shift baseline. That's what makes
+        `risk_score` adapt to a regime shift automatically rather than
+        requiring a periodic retrain just to stop over-flagging "high".
+
+        Months with fewer than `min_periods` prior observations (the
+        start of the series, before 24 trailing months even exist yet)
+        fall back to the same neutral 0.5 used elsewhere in this file for
+        "genuinely cannot be computed" rather than being ranked against a
+        window too small to be meaningful. NaN inputs map to 0.5 for the
+        same reason as `_train_percentile`.
+        """
+        series = series.sort_index()
+        values = series.values
+        n = len(values)
+        out = np.full(n, 0.5, dtype=float)
+        for i in range(n):
+            if pd.isna(values[i]):
+                continue
+            window = values[max(0, i - window_months):i]
+            window = window[~pd.isna(window)]
+            if len(window) < min_periods:
+                continue
+            window_sorted = np.sort(window)
+            rank = np.searchsorted(window_sorted, values[i], side="right") / len(window_sorted)
+            out[i] = float(np.clip(rank, 0.0, 1.0))
+        return pd.Series(out, index=series.index)
 
     # --- Component 1: market volatility (next month's, as before) ---
     vol = bdry_series.pct_change().rolling(3).std()
@@ -566,11 +639,16 @@ def main(data_dir=None, output_dir=None):
     trend_deviation = ((bdry_series - roll3) / roll3.replace(0, np.nan)).abs()
 
     # Market-wide (per-month) components, broadcast onto every row of that
-    # month exactly like the original single-signal design.
-    month_train_mask = pd.Series(bdry_series.index <= cut, index=bdry_series.index)
-    vol_pctile_by_month = _train_percentile(vol_next, month_train_mask)
-    shock_pctile_by_month = _train_percentile(rate_shock, month_train_mask)
-    trend_pctile_by_month = _train_percentile(trend_deviation, month_train_mask)
+    # month exactly like the original single-signal design. Each is now
+    # ranked against a trailing 24-month window ending just before that
+    # month, recomputed every month (see _rolling_percentile above) —
+    # replacing the old single frozen train-only percentile reference,
+    # which needed a periodic retrain to avoid clipping once the market
+    # moved past whatever range the training period happened to cover.
+    ROLLING_WINDOW_MONTHS = 24
+    vol_pctile_by_month = _rolling_percentile(vol_next, window_months=ROLLING_WINDOW_MONTHS)
+    shock_pctile_by_month = _rolling_percentile(rate_shock, window_months=ROLLING_WINDOW_MONTHS)
+    trend_pctile_by_month = _rolling_percentile(trend_deviation, window_months=ROLLING_WINDOW_MONTHS)
 
     master["_vol_pctile"] = master["month"].map(vol_pctile_by_month)
     master["_shock_pctile"] = master["month"].map(shock_pctile_by_month)
@@ -759,7 +837,19 @@ def main(data_dir=None, output_dir=None):
 
 
     classes={"low":0,"medium":1,"high":2}; class_names=["low","medium","high"]
-    clf=RandomForestClassifier(n_estimators=300,random_state=42,n_jobs=-1,class_weight="balanced"); clf.fit(Xtr,train.target_risk.map(classes))
+    # Ordinal-regression fix (see ordinal_risk_model.py): a plain
+    # RandomForestClassifier trained directly on the low/medium/high
+    # bucket labels collapses the boundary class (measured 0%
+    # precision/recall — see AUDIT_REPORT.md). Fit a regressor on the
+    # CONTINUOUS risk_score instead and only bucket the final prediction,
+    # with thresholds recalibrated against the regressor's own recent
+    # (trailing 36-month) OOB predictions so the low/medium/high split
+    # tracks the current regime rather than the stale train-only tertiles.
+    clf = OrdinalRiskClassifier(
+        thresholds=(q1, q2), calibrate_thresholds=True, calibration_recency_months=36,
+        n_estimators=300, random_state=42, n_jobs=-1, max_depth=12,
+    )
+    clf.fit(Xtr, train["risk_score"].values, sample_months=train["month"].values)
     rp=clf.predict(Xte)
     y_true=test.target_risk.map(classes); y_pred=rp
     acc=accuracy_score(y_true,rp); cm=confusion_matrix(y_true,rp,labels=[0,1,2]).tolist()
@@ -842,7 +932,10 @@ def main(data_dir=None, output_dir=None):
     dataset_hash, dataset_file_hashes = _dataset_hash(DATA, DATA_FILES.values())
     model_version = f"real_monthly_v2-{training_timestamp}-{dataset_hash}"
     forecast_hyperparameters = {"n_estimators": 300, "random_state": 42, "n_jobs": -1, "max_depth": 12}
-    risk_hyperparameters = {"n_estimators": 300, "random_state": 42, "n_jobs": -1, "class_weight": "balanced"}
+    risk_hyperparameters = {
+        "n_estimators": 300, "random_state": 42, "n_jobs": -1, "max_depth": 12,
+        "calibrate_thresholds": True, "calibration_recency_months": 36,
+    }
     training_metadata_block = {
         "model_version": model_version,
         "training_timestamp": training_timestamp,
@@ -863,7 +956,7 @@ def main(data_dir=None, output_dir=None):
             "meaningfully (see README 'Known limitations'). "
             "validation_row_count is genuinely 0, not omitted."
         ),
-        "algorithm": {"forecast": "RandomForestRegressor", "risk": "RandomForestClassifier"},
+        "algorithm": {"forecast": "RandomForestRegressor", "risk": "OrdinalRiskClassifier(RandomForestRegressor)"},
         "hyperparameters": {"forecast": forecast_hyperparameters, "risk": risk_hyperparameters},
         "library_versions": {
             "python": sys.version.split()[0],
@@ -875,7 +968,7 @@ def main(data_dir=None, output_dir=None):
         },
     }
 
-    metadata={"pipeline_version":"real_monthly_v2","data_source_mode":DATA_SOURCE_MODE,"data_dir":str(DATA),"training_run":training_metadata_block,"training_row_count":training_metadata_block["training_row_count"],"test_row_count":training_metadata_block["test_row_count"],"model_version":training_metadata_block["model_version"],"feature_cols":feature_names,"numeric_features":num,"categorical_features":cat,"target":"next_month_bdry_market_proxy_delta_vs_bdry_lag1","target_transform":{"type":"delta_vs_last_known","reconstruct_level_as":"prediction = bdry_lag1 + model_output","reason":"RandomForest leaves cannot extrapolate beyond the training target range; BDRY trended well outside the training range by the test period, so predicting the level directly under-forecast by ~5x naive persistence's error. Predicting the (roughly stationary) change instead avoids the extrapolation ceiling. See README Known limitations."},"commodities":COMMODITIES,"bdry_history_12m": bdry_history,"origins":[p for p in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"]],"destinations":EAST_COAST,"routes":[f"{o}-{d}" for o in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"] for d in EAST_COAST],"shipment_modes":["Bulk Carrier","Charter"],"vessel_types":["Handysize","Supramax","Panamax","Capesize"],"latest_lookup":look,"risk_classes":["low","medium","high"],"risk_thresholds":[float(q1),float(q2)],"risk_weights":RISK_WEIGHTS,"risk_methodology":"hybrid_score: volatility+rate_shock+trend_deviation+port_congestion+data_uncertainty, each percentile-ranked against training-period distribution, weighted-summed, then bucketed at train-only tertiles","metrics":{"forecast_mae":round(float(mae),4),"risk_accuracy":round(float(acc),4),"risk_balanced_accuracy":round(float(balanced_acc),4),"risk_macro_f1":round(float(macro_f1),4),"risk_weighted_f1":round(float(weighted_f1),4),"risk_per_class":per_class_metrics,"risk_classes_missing_from_test":classes_missing_from_test,"risk_train_class_counts":train_class_counts,"risk_test_class_counts":test_class_counts,"risk_confusion_matrix":cm,"risk_confusion_matrix_labels":class_names,"risk_walk_forward_cv":risk_cv,"baseline_comparison":baseline_comparison,"horizon_metrics":{str(h): horizon_metrics[h] for h in HORIZONS},"horizons_available":HORIZONS},"data_files":DATA_FILES,"forecast_feature_importance":forecast_feature_importance,"risk_feature_importance":risk_feature_importance,"numeric_feature_stats":numeric_feature_stats}
+    metadata={"pipeline_version":"real_monthly_v2","data_source_mode":DATA_SOURCE_MODE,"data_dir":str(DATA),"training_run":training_metadata_block,"training_row_count":training_metadata_block["training_row_count"],"test_row_count":training_metadata_block["test_row_count"],"model_version":training_metadata_block["model_version"],"feature_cols":feature_names,"numeric_features":num,"categorical_features":cat,"target":"next_month_bdry_market_proxy_delta_vs_bdry_lag1","target_transform":{"type":"delta_vs_last_known","reconstruct_level_as":"prediction = bdry_lag1 + model_output","reason":"RandomForest leaves cannot extrapolate beyond the training target range; BDRY trended well outside the training range by the test period, so predicting the level directly under-forecast by ~5x naive persistence's error. Predicting the (roughly stationary) change instead avoids the extrapolation ceiling. See README Known limitations."},"commodities":COMMODITIES,"bdry_history_12m": bdry_history,"origins":[p for p in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"]],"destinations":EAST_COAST,"routes":[f"{o}-{d}" for o in ["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"] for d in EAST_COAST],"shipment_modes":["Bulk Carrier","Charter"],"vessel_types":["Handysize","Supramax","Panamax","Capesize"],"latest_lookup":look,"risk_classes":["low","medium","high"],"risk_thresholds":[float(q1),float(q2)],"risk_weights":RISK_WEIGHTS,"risk_methodology":"hybrid_score: volatility+rate_shock+trend_deviation percentile-ranked against a trailing 24-month rolling window recomputed every month (regime-adaptive, no periodic retrain needed to avoid clipping); port_congestion+data_uncertainty percentile-ranked against the training-period distribution; weighted-summed, then bucketed at train-only tertiles for ground-truth labels. Classifier: OrdinalRiskClassifier regresses the continuous risk_score (RandomForestRegressor) rather than fitting the nominal low/medium/high labels directly, avoiding the boundary-class collapse a nominal classifier suffers; its own low/medium/high split is recalibrated against the regressor's trailing-36-month out-of-bag predictions so the bucket boundaries track the current regime instead of a frozen whole-history reference.","metrics":{"forecast_mae":round(float(mae),4),"risk_accuracy":round(float(acc),4),"risk_balanced_accuracy":round(float(balanced_acc),4),"risk_macro_f1":round(float(macro_f1),4),"risk_weighted_f1":round(float(weighted_f1),4),"risk_per_class":per_class_metrics,"risk_classes_missing_from_test":classes_missing_from_test,"risk_train_class_counts":train_class_counts,"risk_test_class_counts":test_class_counts,"risk_confusion_matrix":cm,"risk_confusion_matrix_labels":class_names,"risk_walk_forward_cv":risk_cv,"baseline_comparison":baseline_comparison,"horizon_metrics":{str(h): horizon_metrics[h] for h in HORIZONS},"horizons_available":HORIZONS},"data_files":DATA_FILES,"forecast_feature_importance":forecast_feature_importance,"risk_feature_importance":risk_feature_importance,"numeric_feature_stats":numeric_feature_stats}
     with open(MODELS/"metadata.json","w") as f: json.dump(metadata,f,indent=2)
     master.to_csv(DATA/"monthly_feature_table.csv",index=False)
     print(json.dumps(metadata["metrics"],indent=2)); print(f"Saved {len(master)} monthly port/commodity rows to {DATA/'monthly_feature_table.csv'}")

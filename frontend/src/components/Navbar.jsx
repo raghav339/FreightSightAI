@@ -1,27 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Anchor, Menu, X, Radio, WifiOff, LogOut, ShieldCheck, ShieldAlert, GitCompare, Waypoints, History, Info, Gauge } from "lucide-react";
+import { Menu, X, LogOut, ShieldCheck, ShieldAlert, Radio, WifiOff } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { Button } from "./ui/button.jsx";
 import api from "../api/client.js";
 
-const HEALTH_CHECK_INTERVAL_MS = 15000;
-const HEALTH_CHECK_TIMEOUT_MS = 5000;
-
 function useBackendStatus() {
-  const [status, setStatus] = useState("checking"); // "checking" | "online" | "offline"
+  const [status, setStatus] = useState("checking");
   const inFlight = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-
     async function check() {
       if (inFlight.current) return;
       inFlight.current = true;
       try {
-        await api.get("/health", { timeout: HEALTH_CHECK_TIMEOUT_MS });
+        await api.get("/health", { timeout: 5000 });
         if (!cancelled) setStatus("online");
       } catch {
         if (!cancelled) setStatus("offline");
@@ -29,72 +23,46 @@ function useBackendStatus() {
         inFlight.current = false;
       }
     }
-
     check();
-    const intervalId = setInterval(check, HEALTH_CHECK_INTERVAL_MS);
-
-    function onVisibilityChange() {
-      if (document.visibilityState === "visible") check();
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange);
-
+    const id = setInterval(check, 15000);
+    const onVisibility = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
-      clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
-
   return status;
 }
 
-function BackendStatusBadge() {
-  const status = useBackendStatus();
-  const isOnline = status === "online";
-  const isOffline = status === "offline";
-
+function CompassMark() {
   return (
-    <div
-      className={cn(
-        "hidden items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[0.62rem] uppercase tracking-widest lg:flex",
-        isOnline && "border-starboard/20 bg-starboard/5 text-starboard",
-        isOffline && "border-port/30 bg-port/10 text-port",
-        status === "checking" && "border-hull-600 bg-hull-800/60 text-slate-500"
-      )}
-      title={isOffline ? "Can't reach the FreightSight backend right now." : undefined}
-    >
-      {isOffline ? (
-        <WifiOff className="h-3 w-3" strokeWidth={2.5} />
-      ) : (
-        <Radio className={cn("h-3 w-3", isOnline && "animate-pulse")} strokeWidth={2.5} />
-      )}
-      {isOnline ? "Console online" : isOffline ? "Console offline" : "Checking…"}
-    </div>
+    <svg viewBox="0 0 40 40" className="h-8 w-8 shrink-0" aria-hidden="true">
+      <circle cx="20" cy="20" r="18.5" fill="none" stroke="currentColor" strokeWidth="1" />
+      <circle cx="20" cy="20" r="13" fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="1 3" />
+      <path d="M20 3.5v33M3.5 20h33" stroke="currentColor" strokeWidth="0.5" />
+      <path d="M20 6 24 20 20 34 16 20Z" fill="currentColor" opacity="0.9" />
+      <path d="M20 6 24 20 20 20Z" fill="rgb(var(--c-vermilion))" />
+    </svg>
   );
 }
 
-function useNavLinks() {
-  const primary = [
-    { to: "/", label: "Home", end: true },
-    { to: "/predict", label: "Predict", icon: Gauge },
-    { to: "/coa-optimizer", label: "COA Optimizer" },
-    { to: "/compare", label: "Compare", icon: GitCompare },
-  ];
-
-  const more = [
-    { to: "/idle-vessel", label: "Idle Vessel", icon: Waypoints },
-    { to: "/history", label: "History", icon: History },
-  ];
-  more.push({ to: "/about", label: "About", icon: Info });
-  return { primary, more };
-}
+const links = [
+  { to: "/", label: "Home", end: true },
+  { to: "/predict", label: "Predict" },
+  { to: "/coa-optimizer", label: "COA Optimizer" },
+  { to: "/compare", label: "Compare" },
+  { to: "/idle-vessel", label: "Idle Vessel" },
+  { to: "/history", label: "History" },
+  { to: "/about", label: "About" },
+];
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const { user, isAuthenticated, isVerified, logout } = useAuth();
   const navigate = useNavigate();
-  const { primary: PRIMARY_LINKS, more: MORE_LINKS } = useNavLinks();
-  const NAV_LINKS = [...PRIMARY_LINKS, ...MORE_LINKS];
+  const status = useBackendStatus();
 
   function handleLogout() {
     logout();
@@ -103,146 +71,84 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b border-hull-600/60 bg-[#050810]/80 backdrop-blur-2xl shadow-[0_12px_40px_-28px_rgba(0,0,0,.95)]">
-      <div className="mx-auto flex h-[4.35rem] max-w-7xl items-center justify-between px-5 sm:px-7 lg:px-9">
-        <NavLink to="/" className="group flex items-center gap-2.5 shrink-0" onClick={() => setOpen(false)}>
-          <span className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-signal/25 bg-gradient-to-br from-signal/15 to-transparent text-signal shadow-[0_0_28px_rgba(34,211,196,.10)] transition-all duration-300 group-hover:-rotate-6 group-hover:border-signal/50">
-            <Anchor className="h-4 w-4" strokeWidth={2.25} />
-          </span>
-          <span className="font-display text-[1.02rem] font-semibold tracking-tight text-paper-50">
-            FreightSight<span className="text-signal">AI</span>
+    <header className="sticky top-0 z-50 border-b border-rule/70 bg-paper/95 backdrop-blur-[3px]">
+      <div className="mx-auto flex min-h-[4.45rem] max-w-[1240px] items-center gap-5 px-5 lg:px-8">
+        <NavLink to="/" onClick={() => setOpen(false)} className="flex shrink-0 items-center gap-2.5 text-ink">
+          <CompassMark />
+          <span className="flex flex-col leading-none">
+            <span className="font-display text-[19px] font-semibold tracking-tight">FreightSight</span>
+            <span className="mt-1 font-mono text-[8px] uppercase tracking-[0.26em] text-inksoft">Chart &amp; Forecast Office</span>
           </span>
         </NavLink>
 
-        <nav className="hidden items-center gap-1 rounded-full border border-hull-600/50 bg-hull-900/45 p-1 xl:flex">
-          {NAV_LINKS.map((link) => (
+        <nav aria-label="Main" className="ml-auto hidden items-center lg:flex">
+          {links.map((item) => (
             <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.end}
+              key={item.to}
+              to={item.to}
+              end={item.end}
               className={({ isActive }) =>
                 cn(
-                  "relative flex items-center gap-1.5 rounded-full px-2.5 py-2 text-[12.5px] font-medium text-slate-400 transition-colors duration-150 hover:text-paper-50",
-                  isActive && "text-hull-950"
+                  "relative whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.17em] transition-colors",
+                  isActive ? "text-ink" : "text-inksoft hover:text-ink",
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  {isActive && (
-                    <motion.span
-                      layoutId="nav-active-pill"
-                      className="absolute inset-0 -z-10 rounded-full bg-signal shadow-glow"
-                      transition={{ type: "spring", stiffness: 420, damping: 34 }}
-                    />
-                  )}
-                  {link.icon && <link.icon className="h-3.5 w-3.5" strokeWidth={2.25} />}
-                  {link.label}
+                  {item.label}
+                  <span className={cn("absolute inset-x-2 -bottom-[19px] h-px origin-left bg-vermilion transition-transform duration-200", isActive ? "scale-x-100" : "scale-x-0")} />
                 </>
               )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="flex items-center gap-3">
-          <div className="hidden xl:block">
-          </div>
-
-          <BackendStatusBadge />
+        <div className="ml-auto flex items-center gap-2 lg:ml-2">
+          <span className={cn("hidden items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] sm:inline-flex", status === "online" ? "border-kelp/50 text-kelp" : status === "offline" ? "border-vermilion/50 text-vermilion" : "border-rule/60 text-rule")} title={status === "offline" ? "FreightSight backend is unreachable right now." : undefined}>
+            {status === "offline" ? <WifiOff className="h-3 w-3" /> : <Radio className={cn("h-3 w-3", status === "online" && "animate-pulse")} />}
+            {status === "online" ? "Console online" : status === "offline" ? "Console offline" : "Checking"}
+          </span>
+          <span className="hidden border border-brass/50 px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-brass md:inline-flex">Radar</span>
 
           {isAuthenticated ? (
-            <div className="hidden items-center gap-2 xl:flex">
-              <div
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[0.68rem] uppercase tracking-widest",
-                  isVerified
-                    ? "border-starboard/30 bg-starboard/10 text-starboard"
-                    : "border-amber/30 bg-amber/10 text-amber"
-                )}
-                title={user?.email}
-              >
+            <div className="hidden items-center gap-2 lg:flex">
+              <span className={cn("flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]", isVerified ? "border-kelp/50 text-kelp" : "border-brass/50 text-brass")} title={user?.email || undefined}>
                 {isVerified ? <ShieldCheck className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}
                 {user?.name?.split(" ")[0] || "Account"}
-              </div>
-              <Button variant="ghost" size="icon" onClick={handleLogout} aria-label={"Log out"}>
+              </span>
+              <button className="p-2 text-inksoft transition-colors hover:text-ink" aria-label="Sign out" onClick={handleLogout}>
                 <LogOut className="h-4 w-4" />
-              </Button>
+              </button>
             </div>
           ) : (
-            <div className="hidden items-center gap-2 xl:flex">
-              <NavLink
-                to="/login"
-                className="rounded-full px-4 py-2 text-sm font-medium text-slate-400 transition-colors hover:text-paper-50"
-              >
-                {"Log in"}
-              </NavLink>
-              <NavLink to="/signup">
-                <Button size="sm">{"Sign up"}</Button>
-              </NavLink>
+            <div className="hidden items-center gap-2 lg:flex">
+              <NavLink to="/login" className="px-2 py-2 font-mono text-[10px] uppercase tracking-[0.17em] text-inksoft hover:text-ink">Log in</NavLink>
+              <NavLink to="/signup" className="border border-ink bg-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.17em] text-paper hover:border-vermilion hover:bg-vermilion">Sign up</NavLink>
             </div>
           )}
 
-          <button
-            type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hull-600 text-slate-300 xl:hidden"
-            onClick={() => setOpen((o) => !o)}
-            aria-label="Toggle navigation menu"
-          >
-            {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+          <button className="p-2 text-ink lg:hidden" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label="Toggle navigation">
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
       {open && (
-        <nav className="flex flex-col gap-1 border-t border-hull-700/70 bg-hull-900/95 px-5 py-3 xl:hidden">
-          {NAV_LINKS.map((link) => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.end}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-400",
-                  isActive && "bg-signal/10 text-signal"
-                )
-              }
-            >
-              {link.icon && <link.icon className="h-4 w-4" strokeWidth={2.25} />}
-              {link.label}
+        <nav aria-label="Mobile" className="border-t border-rule/60 bg-parchment lg:hidden">
+          {links.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setOpen(false)} className={({ isActive }) => cn("flex items-center justify-between border-b border-rule/40 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.18em]", isActive ? "text-vermilion" : "text-inksoft") }>
+              {item.label}
+              <span className="text-rule">—</span>
             </NavLink>
           ))}
-
-          <div className="mt-2 flex flex-col gap-2 border-t border-hull-700/70 pt-3">
+          <div className="flex items-center gap-3 px-5 py-4">
             {isAuthenticated ? (
-              <>
-                <div
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-lg border px-3 py-2 font-mono text-xs uppercase tracking-widest",
-                    isVerified
-                      ? "border-starboard/30 bg-starboard/10 text-starboard"
-                      : "border-amber/30 bg-amber/10 text-amber"
-                  )}
-                >
-                  {isVerified ? <ShieldCheck className="h-3.5 w-3.5" /> : <ShieldAlert className="h-3.5 w-3.5" />}
-                  {user?.email}
-                </div>
-                <Button variant="outline" size="sm" onClick={handleLogout} className="justify-center">
-                  <LogOut className="h-3.5 w-3.5" /> {"Log out"}
-                </Button>
-              </>
+              <button onClick={handleLogout} className="font-mono text-[10px] uppercase tracking-[0.18em] text-inksoft">Sign out</button>
             ) : (
               <>
-                <NavLink to="/login" onClick={() => setOpen(false)}>
-                  <Button variant="outline" size="sm" className="w-full justify-center">
-                    {"Log in"}
-                  </Button>
-                </NavLink>
-                <NavLink to="/signup" onClick={() => setOpen(false)}>
-                  <Button size="sm" className="w-full justify-center">
-                    {"Sign up"}
-                  </Button>
-                </NavLink>
+                <NavLink to="/login" onClick={() => setOpen(false)} className="font-mono text-[10px] uppercase tracking-[0.18em] text-inksoft">Log in</NavLink>
+                <NavLink to="/signup" onClick={() => setOpen(false)} className="border border-ink bg-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.18em] text-paper">Sign up</NavLink>
               </>
             )}
           </div>

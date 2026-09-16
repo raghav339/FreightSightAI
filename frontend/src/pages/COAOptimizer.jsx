@@ -32,7 +32,8 @@ export default function COAOptimizer(){
     }catch(err){setError(err.response?.data?.error||err.message||"Optimization failed.");}
     finally{setLoading(false);}
   }
-  return <section className="flex flex-col gap-7">
+  return <section className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8 lg:py-14">
+    <div className="flex flex-col gap-7">
     <header>
       <span className="font-mono text-xs uppercase tracking-[0.2em] text-signal/80">COA / MULTI-VOYAGE</span>
       <h1 className="mt-1 font-display text-3xl font-semibold text-paper-50">{"COA Cost Optimizer"}</h1>
@@ -117,5 +118,6 @@ export default function COAOptimizer(){
       <div className="overflow-x-auto rounded-2xl border border-hull-600"><table className="w-full text-sm"><thead><tr className="border-b border-hull-600 text-left text-slate-500"><th className="p-3">Vessel</th><th className="p-3">Voyages</th><th className="p-3">Parcel (t)</th><th className="p-3">Cycle days</th><th className="p-3">Indicative $/t</th><th className="p-3">Schedule</th><th className="p-3">Expected cost</th></tr></thead><tbody>{result.alternatives.map(x=><tr key={x.vessel_type} className="border-b border-hull-700/70 text-slate-300"><td className="p-3">{x.vessel_type}</td><td className="p-3">{x.voyages}</td><td className="p-3">{x.average_parcel_tons.toLocaleString()}</td><td className="p-3">{x.estimated_cycle_days}</td><td className="p-3">{x.contract_rate_usd_per_ton!=null?`$${x.contract_rate_usd_per_ton}`:"—"}</td><td className={`p-3 text-xs ${x.schedule_feasible?"text-starboard":"text-amber-300"}`}>{x.schedule_feasible?`${x.schedule_slack_days}d slack`:`+${Math.abs(x.schedule_slack_days)}d needed`}</td><td className="p-3">{x.expected_freight_cost_usd!=null?`$${x.expected_freight_cost_usd.toLocaleString()}`:"—"}</td></tr>)}</tbody></table></div>
       <p className="text-xs leading-5 text-slate-500">{result.methodology} {result.market_forecast.disclaimer}</p>
     </div>}
+      </div>
   </section>
 }

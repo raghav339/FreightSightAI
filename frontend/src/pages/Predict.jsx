@@ -16,35 +16,42 @@ export default function Predict() {
   }
 
   return (
-    <section className="flex flex-col gap-8">
-      <header className="flex flex-col gap-1.5">
-        <span className="font-mono text-xs uppercase tracking-[0.2em] text-signal/80">{"Forecast console"}</span>
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-paper-50 sm:text-3xl">
-          {"Shipment details"}
-        </h1>
-        <p className="max-w-2xl text-sm text-slate-400">
-          {"Enter the route and cargo profile — the model returns a rate forecast, market risk read, and a recommended chartering window."}
-        </p>
-      </header>
+    <section className="predict-page">
+      <div className="predict-shell mx-auto max-w-[1240px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
+        <header className="predict-heading">
+          <div>
+            <div className="fs-kicker">Forecast console</div>
+            <h1 className="predict-title">Plot a shipment</h1>
+            <p className="predict-intro">
+              Enter the route and cargo profile. The model returns a rate forecast, a market-risk read, and a recommended chartering window with the constraints that shaped it.
+            </p>
+          </div>
+          <div className="predict-stamp">one-pager</div>
+        </header>
 
-      <ForecastForm onResult={handleResult} />
+        <div className="mt-7">
+          <ForecastForm onResult={handleResult} />
+        </div>
 
-      <AnimatePresence mode="wait">
-        {result && (
-          <motion.div
-            key={JSON.stringify(result).slice(0, 40)}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="flex flex-col gap-6"
-          >
-            <ResultCards result={result} />
-            <TrendChart points={result.chart_values} />
-            <WhatIfPanel baseRequest={lastRequest} />
-            <AlertsPanel />
-          </motion.div>
-        )}
-      </AnimatePresence>
+        <AnimatePresence mode="wait">
+          {result && (
+            <motion.div
+              key={JSON.stringify(result).slice(0, 80)}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+              className="mt-10"
+            >
+              <ResultCards result={result} />
+              <div className="mt-7 flex flex-col gap-6">
+                <TrendChart points={result.chart_values} />
+                <WhatIfPanel baseRequest={lastRequest} />
+                <AlertsPanel />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </section>
   );
 }

@@ -10,6 +10,44 @@ const { ML_SERVICE_URL, withRetry } = require("../utils/mlClient");
 
 const router = express.Router();
 
+// GET /api/recent-voyages — public, privacy-safe recent forecast records for
+// the landing-page Voyage Log tape. It exposes route/commodity/rate/risk only;
+// user identity and request-specific account data are intentionally omitted.
+router.get("/recent-voyages", async (req, res) => {
+  const requestedLimit = Number.parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 24)
+    : 12;
+
+  try {
+    const rows = await db.query(
+      `SELECT fr.id AS result_id, fr.route, fr.predicted_freight_rate_usd_per_ton,
+              fr.risk_label, fr.created_at,
+              q.commodity
+       FROM forecast_results fr
+       JOIN forecast_requests q ON q.id = fr.request_id
+       ORDER BY fr.created_at DESC, fr.id DESC
+       LIMIT ?`,
+      [limit]
+    );
+
+    res.json({
+      voyages: rows.map((row) => ({
+        result_id: row.result_id,
+        route: row.route,
+        commodity: row.commodity,
+        predicted_freight_rate_usd_per_ton: row.predicted_freight_rate_usd_per_ton,
+        risk_label: row.risk_label,
+        created_at: row.created_at,
+      })),
+      source: "forecast_results",
+    });
+  } catch (err) {
+    console.error("recent voyage tape query failed:", err.message);
+    res.status(500).json({ error: "Could not fetch recent voyage records" });
+  }
+});
+
 // GET /api/history — previous searches / predictions
 router.get("/history", requireAuth, async (req, res) => {
   const requestedLimit = Number.parseInt(req.query.limit, 10);

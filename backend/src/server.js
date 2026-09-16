@@ -2,7 +2,6 @@
 // Wires all routers together (see app.js) and starts listening. Split out
 // of app.js so tests can import the app directly without binding a port.
 const axios = require("axios");
-const app = require("./app");
 const { refreshDestinationPorts } = require("./config/destinationPorts");
 const { ML_SERVICE_URL } = require("./utils/mlClient");
 const { initializeAuto } = require("./db/initAuto");
@@ -28,10 +27,11 @@ function pingMlServiceHealth() {
 
 async function bootstrap() {
   try {
-    // Initialize/migrate the database at SERVICE START, never at npm build time.
-    // This keeps Render builds independent of transient DB connectivity while
-    // still guaranteeing the schema exists before the API begins accepting requests.
+    // Initialize/migrate the database before importing the Express app.
+    // The app imports routes, and routes import the DB layer; doing this first
+    // guarantees SQLite has its tables before any migrations/queries run.
     await initializeAuto();
+    const app = require("./app");
 
     app.listen(PORT, () => {
       console.log(`FreightSight backend running on port ${PORT}`);

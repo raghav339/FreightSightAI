@@ -72,7 +72,8 @@ export default function IdleVesselFinder() {
   }
 
   return (
-    <section className="flex flex-col gap-8">
+    <section className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8 lg:py-14">
+      <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-1.5">
         <span className="font-mono text-xs uppercase tracking-[0.2em] text-signal/80">{"Idle vessel finder"}</span>
         <h1 className="font-display text-2xl font-semibold tracking-tight text-paper-50 sm:text-3xl">
@@ -327,6 +328,7 @@ export default function IdleVesselFinder() {
           </Card>
         </motion.div>
       )}
+      </div>
     </section>
   );
 }

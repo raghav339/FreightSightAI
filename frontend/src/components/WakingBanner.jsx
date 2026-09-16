@@ -1,39 +1,29 @@
-// Listens to the mlWakeup bus (see api/client.js + api/mlWakeup.js) and
-// shows a small non-blocking banner while a request is probably waiting
-// on a Render free-tier cold start, instead of leaving the user staring
-// at an unresponsive form with no explanation.
 import { useEffect, useState } from "react";
 import { subscribeMlWakeup } from "../api/mlWakeup.js";
 
 export default function WakingBanner() {
   const [state, setState] = useState({ active: false, phase: null });
-
   useEffect(() => subscribeMlWakeup(setState), []);
-
   if (!state.active) return null;
 
-  const message =
-    state.phase === "retrying"
-      ? "Still waking up — retrying automatically…"
-      : state.phase === "comparing"
-      ? "Comparing every loading port with live vessel data — this can take up to 20 seconds…"
-      : state.phase === "working"
-      ? "Still working on your forecast…"
-      : "This is taking longer than usual — waking up the forecasting service can take up to a minute on a cold instance…";
+  const message = state.phase === "retrying"
+    ? "still waking up — retrying automatically"
+    : state.phase === "comparing"
+    ? "comparing loading ports and vessel signals — stand by"
+    : state.phase === "working"
+    ? "forecasting service is processing the sheet"
+    : "forecasting service is waking from an idle instance";
 
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex justify-center px-4"
-    >
-      <div className="pointer-events-auto flex items-center gap-2.5 rounded-full border border-amber/30 bg-hull-800/95 px-4 py-2 text-xs font-mono uppercase tracking-wide text-amber shadow-lg shadow-black/30 backdrop-blur">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber opacity-60" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber" />
-        </span>
-        {message}
-      </div>
+  return <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 top-[4.55rem] z-[60] flex justify-center px-4 pt-3">
+    <div className="pointer-events-auto flex max-w-[min(92vw,760px)] items-center gap-3 border border-rule/55 bg-parchment/96 px-4 py-2.5 font-mono text-[9px] uppercase tracking-[0.15em] text-ink shadow-[0_2px_0_rgb(255_255_255_/_0.45)] backdrop-blur-[2px]">
+      <span className="relative flex h-2.5 w-2.5 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vermilion opacity-45" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full border border-vermilion/70 bg-paper" />
+      </span>
+      <span className="text-rule">ml service</span>
+      <span className="h-3 w-px bg-rule/40" />
+      <span>{message}</span>
+      <span className="ml-auto hidden font-mono text-[8px] tracking-[0.14em] text-rule sm:inline">status</span>
     </div>
-  );
+  </div>;
 }

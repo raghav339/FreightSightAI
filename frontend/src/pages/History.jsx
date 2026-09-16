@@ -28,7 +28,8 @@ export default function History() {
   }, [authLoading, isAuthenticated]);
 
   return (
-    <section className="flex flex-col gap-6">
+    <section className="mx-auto max-w-[1240px] px-5 py-10 lg:px-8 lg:py-14">
+      <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1.5">
         <span className="font-mono text-xs uppercase tracking-[0.2em] text-signal/80">{"Voyage log"}</span>
         <h1 className="font-display text-2xl font-semibold tracking-tight text-paper-50 sm:text-3xl">
@@ -73,6 +74,7 @@ export default function History() {
           <HistoryTable rows={rows} />
         </motion.div>
       )}
+      </div>
     </section>
   );
 }

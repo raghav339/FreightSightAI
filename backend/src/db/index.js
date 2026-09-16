@@ -98,16 +98,11 @@ if (CLIENT === "mysql") {
   const dbPath = path.join(__dirname, "..", "..", dbFilename);
   const sqlite = new Database(dbPath);
   sqlite.pragma("foreign_keys = ON");
-  try {
-    sqlite.exec("ALTER TABLE forecast_results ADD COLUMN recommended_vessel_reason TEXT");
-  } catch (err) {
-    if (!/duplicate column name/i.test(err.message)) throw err;
-  }
-  try {
-    sqlite.exec("ALTER TABLE forecast_results ADD COLUMN port_data_warning TEXT");
-  } catch (err) {
-    if (!/duplicate column name/i.test(err.message)) throw err;
-  }
+
+  // Schema creation/migrations happen in initAuto/initSqlite before the app
+  // module is imported. Keeping DB access side-effect free here prevents an
+  // empty/new SQLite file from failing during require() with
+  // "no such table: forecast_results".
 
   // normalize `?` placeholders (both drivers use the same style, so no rewrite needed)
   query = async (sql, params = []) => {
