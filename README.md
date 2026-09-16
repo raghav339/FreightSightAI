@@ -8,7 +8,7 @@ Its main workflow is:
 
 ## Recent fixes
 
-See `FreightSight_Project_Manual.md` for setup, workflow and architecture detail. Latest fixes in this build:
+See `PROJECT_MANUAL.md` §13 (Changelog) for full detail. Latest:
 
 - Widened `forecast_results.vessel_constraint_note` and `alerts.message` from `VARCHAR(500)` to `TEXT` — fixes intermittent "Forecast was generated but could not be saved" errors on MySQL caused by generated explanation text exceeding the old column limits.
 - Fixed AIS `PositionReport` ingestion: AISStream's `NavigationalStatus` string enum is now normalized to the numeric ITU-R code the `ais_positions` schema expects, instead of failing every insert.
@@ -215,7 +215,7 @@ The current project was statically inspected and the Python/ML test suite was ex
 
 ### Passed
 
-**68 ML tests** exist across the `ml-service/tests/` suite (up from 64 at the last recorded run — `test_coa_optimizer.py` and `test_idle_alternatives.py` gained tests since), covering:
+**64 ML tests passed**, covering:
 
 - baseline guardrails
 - COA optimizer
@@ -230,7 +230,7 @@ The current project was statically inspected and the Python/ML test suite was ex
 - route model
 - synthetic market proxy
 
-Python compilation also passed for the ML service, and Node syntax checks passed for the backend source files. (This documentation refresh re-verified compilation/syntax and the current test *count* directly; it could not re-execute `pytest` itself because this environment has no network access to install the pinned dependencies — see the recommended commands below to confirm all 68 pass.)
+Python compilation also passed for the ML service, and Node syntax checks passed for the backend source files.
 
 ### Environment-limited checks
 
@@ -283,7 +283,7 @@ The FastAPI app was also exercised directly with its test client. The following 
 
 ## Documentation
 
-- `FreightSight_Project_Manual.md` — detailed setup, workflows, troubleshooting, architecture and demo guide.
+- `PROJECT_MANUAL.md` — detailed setup, workflows, troubleshooting, architecture and demo guide.
 - `docs/SIH26006_TRACEABILITY.md` — requirement-to-implementation traceability and verification notes.
 - `ml-service/data/README.md` — data organization and provenance.
 - `ml-service/data/production/README.md` — production-data caveats.

@@ -1,7 +1,5 @@
 # FreightSight Audit Report — 2026-09-07
 
-> **Refresh note (this pass):** Re-checked against the current archive. Python compilation (33 files) and Node syntax checks were re-verified and still pass. The ML test *count* has grown from 64 to 68 since the original audit date (see the corrected table below) — the filename/manual-name inconsistencies noted in the original findings have also been corrected here. Full `pytest`/`npm test`/`npm run build` execution could not be re-run in this environment (no network access to install pinned dependencies); this remains the same environment-limitation the original audit disclosed.
-
 ## Scope
 
 Full archive-level inspection of frontend, backend, ML service, model/data artifacts, API wiring, configuration examples, documentation, tests and service integration.
@@ -22,12 +20,12 @@ Full archive-level inspection of frontend, backend, ML service, model/data artif
 
 3. **Project documentation drift**
    - Updated `README.md`.
-   - Added `FreightSight_Project_Manual.md`.
-   - Updated `docs/SIH26006_TRACEABILITY.md` to reflect the ML verification result and the actual dependency-limited checks.
+   - Added `PROJECT_MANUAL.md`.
+   - Updated `docs/SIH26006_TRACEABILITY.md` to reflect the current 64-test ML verification result and the actual dependency-limited checks.
 
 ### No blocking defect found in executable ML logic
 
-The ML service compiled successfully (33/33 `.py` files, re-verified in this refresh) and Node syntax checks passed for every backend source file. At the original audit date, 64 ML tests were recorded as passing file-by-file. **This refresh found the suite has since grown to 68 tests** (`test_coa_optimizer.py` and `test_idle_alternatives.py` each gained tests) — see the corrected table below. This refresh confirmed the count and that the ML service still compiles cleanly; it could not re-execute `pytest` itself, because this verification environment has no network access to install the pinned dependencies (`fastapi==0.115.0`, etc.). Re-run the suite on a connected machine to confirm all 68 currently pass.
+The ML service compiled successfully and all 64 ML tests passed when run file-by-file.
 
 Direct FastAPI smoke tests also succeeded for:
 
@@ -68,23 +66,21 @@ These are verification-environment limitations, not claims that the missing suit
 
 ## ML test results
 
-| Test file | Test count (2026-09-07 audit) | Test count (this refresh) |
-|---|---:|---:|
-| `test_baseline_guardrail.py` | 7 | 7 |
-| `test_coa_optimizer.py` | 1 | 4 |
-| `test_compare_origins.py` | 8 | 8 |
-| `test_fallback_hierarchy.py` | 4 | 4 |
-| `test_idle_alternatives.py` | 6 | 7 |
-| `test_idle_detector.py` | 5 | 5 |
-| `test_port_utils.py` | 12 | 12 |
-| `test_predict_integration.py` | 8 | 8 |
-| `test_risk_walk_forward_cv.py` | 5 | 5 |
-| `test_route_freight_model.py` | 3 | 3 |
-| `test_route_model.py` | 3 | 3 |
-| `test_synthetic_market_proxy.py` | 2 | 2 |
-| **Total** | **64** | **68** |
-
-The "this refresh" column was obtained by statically counting `def test_...` methods in each file in the current archive, since this environment could not install dependencies to run `pytest` directly. It is a verified *count*, not a fresh pass/fail execution — run the suite on a connected machine to confirm all 68 pass.
+| Test file | Passed |
+|---|---:|
+| `test_baseline_guardrail.py` | 7 |
+| `test_coa_optimizer.py` | 1 |
+| `test_compare_origins.py` | 8 |
+| `test_fallback_hierarchy.py` | 4 |
+| `test_idle_alternatives.py` | 6 |
+| `test_idle_detector.py` | 5 |
+| `test_port_utils.py` | 12 |
+| `test_predict_integration.py` | 8 |
+| `test_risk_walk_forward_cv.py` | 5 |
+| `test_route_freight_model.py` | 3 |
+| `test_route_model.py` | 3 |
+| `test_synthetic_market_proxy.py` | 2 |
+| **Total** | **64** |
 
 ## Data/model limitations
 

@@ -70,10 +70,3 @@ Create a backend database with `npm run init-db`, run the backend, run the ML se
 ## 8. Data honesty rules
 
 Never call synthetic route values “broker quotes” or “live market rates”. Keep `forecast_type`, data-confidence fields, and the synthetic-data notice visible wherever a synthetic route forecast is shown.
-
-## 9. Changelog
-
-- **2026-09 (this build):** Widened `forecast_results.vessel_constraint_note` and `alerts.message` from `VARCHAR(500)` to `TEXT` on both SQLite and MySQL schemas, fixing intermittent "Forecast was generated but could not be saved" errors when generated explanation text exceeded the old column limits. Fixed AIS `PositionReport` ingestion so AISStream's `NavigationalStatus` string enum is normalized to the numeric ITU-R code the `ais_positions` schema expects. Fixed an AIS collector connection leak that could exhaust AISStream's per-key concurrent-connection limit (previously surfaced as a `429` in `/ais/status`'s `last_error`).
-- **2026-09-07 audit:** Full archive-level inspection (frontend, backend, ML service, data/model artifacts, API wiring, docs, tests). Fixed a frontend env-var mismatch (`VITE_API_BASE_URL` documented vs `VITE_API_URL` actually read), corrected stale route-model metadata about AIS integration, and refreshed project documentation. See `AUDIT_REPORT.md` for full findings.
-
-Note: earlier drafts of `README.md` and `AUDIT_REPORT.md` referred to this section as "`PROJECT_MANUAL.md` §13" — the manual file is actually named `FreightSight_Project_Manual.md`; both other documents have been corrected to match.

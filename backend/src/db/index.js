@@ -49,6 +49,11 @@ if (CLIENT === "mysql") {
     return { lastID: result.insertId, changes: result.affectedRows };
   };
 
+  // Lightweight migrations: schema.sql's CREATE TABLE IF NOT EXISTS only
+  // applies new columns to a brand-new database, so a database that was
+  // already initialized before these columns existed needs them added
+  // explicitly. Safe to run on every boot — ER_DUP_FIELDNAME (1060) is
+  // caught and ignored once a column is already there.
   const MYSQL_COLUMN_MIGRATIONS = [
     "ALTER TABLE forecast_results ADD COLUMN recommended_vessel_reason TEXT",
     "ALTER TABLE forecast_results ADD COLUMN port_data_warning TEXT",
@@ -63,7 +68,11 @@ if (CLIENT === "mysql") {
         }
       }
     }
-
+    // vessel_constraint_note was VARCHAR(500) — the generated vessel-
+    // substitution explanation can exceed that, and MySQL strict mode
+    // rejects the whole INSERT instead of truncating, which is why
+    // /forecast was returning "generated but could not be saved" for
+    // many routes. MODIFY COLUMN is safe to re-run on every boot.
     try {
       await pool.query(
         "ALTER TABLE forecast_results MODIFY COLUMN vessel_constraint_note TEXT"
@@ -71,7 +80,9 @@ if (CLIENT === "mysql") {
     } catch (err) {
       console.error("MySQL migration failed (widen vessel_constraint_note):", err.message);
     }
-    
+    // alerts.message was VARCHAR(500) — the high_risk alert embeds the
+    // full forecast summary (which can itself embed the vessel
+    // explanation), which was overflowing it the same way.
     try {
       await pool.query("ALTER TABLE alerts MODIFY COLUMN message TEXT NOT NULL");
     } catch (err) {
@@ -80,7 +91,8 @@ if (CLIENT === "mysql") {
   })();
 } else {
   const Database = require("better-sqlite3");
-
+  // Tests get their own SQLite file so `npm test` never reads/writes the
+  // dev database (freightsight.sqlite) that `npm run dev` uses.
   const dbFilename =
     process.env.NODE_ENV === "test" ? "freightsight.test.sqlite" : "freightsight.sqlite";
   const dbPath = path.join(__dirname, "..", "..", dbFilename);
