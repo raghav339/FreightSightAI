@@ -191,7 +191,6 @@ export default function ForecastForm({ onResult }) {
     >
       <div className="shipment-sheet__topline">
         <div className="fs-kicker">Shipment details</div>
-        <div className="shipment-sheet__code">worksheet · form 1</div>
       </div>
 
       <div className="shipment-sheet__grid">
@@ -218,7 +217,7 @@ export default function ForecastForm({ onResult }) {
         </Field>
 
         <Field label="Cargo weight" hint="tonnes">
-          <Input type="number" min="1" step="0.1" required placeholder="10000" value={form.cargo_weight_tons} onChange={(e) => update("cargo_weight_tons", e.target.value)} />
+          <Input type="number" min="1" step="0.1" required placeholder="Enter weight" value={form.cargo_weight_tons} onChange={(e) => update("cargo_weight_tons", e.target.value)} />
         </Field>
         <Field label="Shipment mode">
           <Select value={form.shipment_mode} onChange={(e) => update("shipment_mode", e.target.value)}>

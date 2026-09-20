@@ -115,7 +115,6 @@ export default function ResultCards({ result }) {
       </section>
 
       <section className="analyst-read">
-        <div className="analyst-read__number">09</div>
         <div>
           <div className="result-kicker">Analyst read · generated from model output</div>
           <p className="analyst-read__text">{result.reasoning || `For ${result.commodity || "this cargo"} into ${result.destination_port || "the destination"}, the route freight rate is forecast at about $${Number(result.forecast_value ?? 0).toFixed(2)}/unit. Market risk is ${riskText[result.risk_label] || "medium"}. ${result.charter_window || "Review the projected charter window"}.`}</p>
@@ -126,7 +125,7 @@ export default function ResultCards({ result }) {
         <section className="voyage-plot">
           <div className="voyage-plot__header">
             <div className="result-kicker">Voyage plot — {result.route || "selected route"}</div>
-            <div className="result-kicker">{isSlow ? "Lite mode — map skipped" : "Mercator sketch · great-circle track"}</div>
+            <div className="result-kicker">{isSlow ? "Lite mode — map skipped" : "Great-circle track"}</div>
           </div>
           {isSlow ? (
             // Lite mode: Leaflet's OSM tiles are a burst of small image

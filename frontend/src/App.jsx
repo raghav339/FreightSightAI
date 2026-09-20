@@ -49,7 +49,6 @@ export default function App() {
         <footer className="border-t border-rule/70 bg-parchment">
           <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-8">
             <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">FreightSight AI · SIH26006 · bulk cargo chartering console</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">plate series 2026 · paper stock A3</span>
           </div>
         </footer>
       </div>

@@ -41,6 +41,70 @@ function InvalidateOnMount() {
   return null;
 }
 
+function emptyReason({ status, lookbackHours, portFilter }) {
+  const scope = portFilter ? `near ${portFilter}` : "in any tracked port area";
+  if (status && !status.api_key_configured) {
+    return "Live AIS isn't configured on this deployment (no AISSTREAM_API_KEY on the ML service), so no vessel positions are being collected.";
+  }
+  if (status && !status.running) {
+    return "The AIS collector isn't running on the ML service, so no new vessel positions are being collected.";
+  }
+  if (status && !status.last_message_at) {
+    return "The AIS collector is running but hasn't received any vessel positions yet. It can take a few minutes after the service starts" + (status.last_error ? ` (last error: ${status.last_error}).` : ".");
+  }
+  return `No AIS vessel positions were reported ${scope} in the last ${lookbackHours}h. Try a longer window${status?.last_message_at ? ` (last AIS message: ${new Date(status.last_message_at).toLocaleString()})` : ""}.`;
+}
+
+// Which vessels are currently inside which tracked port's area, built from the
+// same positions as the map dots (each vessel is tagged with its nearest port).
+function VesselsByPort({ ports, vessels }) {
+  const grouped = {};
+  for (const v of vessels) {
+    const key = v.port_near || "__open__";
+    (grouped[key] ||= []).push(v);
+  }
+  const rows = ports
+    .map((p) => ({ name: p.name, list: grouped[p.name] || [] }))
+    .sort((a, b) => b.list.length - a.list.length || a.name.localeCompare(b.name));
+  const open = grouped.__open__ || [];
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="font-display text-lg font-semibold text-paper-50">Vessels by port</h3>
+        <span className="text-xs text-slate-500">
+          {vessels.length - open.length} near a tracked port{open.length ? ` · ${open.length} in open water` : ""}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map(({ name, list }) => (
+          <div key={name} className={`rounded-xl border border-hull-600/60 p-3 ${list.length ? "bg-hull-900/50" : "opacity-60"}`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm font-medium text-paper-50">{name}</span>
+              <span className="font-mono text-sm text-paper-50">{list.length}</span>
+            </div>
+            {list.length === 0 ? (
+              <div className="mt-1 text-xs text-slate-500">No vessels reported</div>
+            ) : (
+              <ul className="mt-2 flex flex-col gap-1">
+                {list.slice(0, 5).map((v) => (
+                  <li key={v.mmsi} className="flex items-center gap-2 text-xs text-slate-400">
+                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[v.status] || "#8892A6" }} />
+                    <span className="truncate">{v.ship_name || `MMSI ${v.mmsi}`}</span>
+                    <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-500">
+                      {v.port_distance_nm != null ? `${v.port_distance_nm.toFixed(1)} nm` : ""}
+                    </span>
+                  </li>
+                ))}
+                {list.length > 5 && <li className="text-[11px] text-slate-500">+{list.length - 5} more</li>}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function LiveFleetMap() {
   const [ports, setPorts] = useState([]);
   const [status, setStatus] = useState(null);
@@ -225,16 +289,18 @@ export default function LiveFleetMap() {
             {!error && vessels.length === 0 && (
               <div className="flex items-center gap-2 rounded-xl border border-hull-600/60 bg-hull-900/30 p-6 text-sm text-slate-400">
                 <Anchor className="h-4 w-4 shrink-0" />
-                {`No AIS vessel activity observed in the last ${lookbackHours}h ${portFilter ? `near ${portFilter}` : "in any tracked port area"}. Try widening the time window.`}
+                {emptyReason({ status, lookbackHours, portFilter })}
               </div>
             )}
 
             <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: PORT_COLOR }} /> Tracked port</span>
+              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: PORT_COLOR }} /> Tracked port (orange dots are ports, not vessels)</span>
               <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR.underway }} /> Underway (&gt;3 kn)</span>
               <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR.slow }} /> Slow (0.5–3 kn)</span>
               <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR.stopped }} /> Stopped (≤0.5 kn)</span>
             </div>
+
+            {ports.length > 0 && <VesselsByPort ports={ports} vessels={vessels} />}
           </CardContent>
         </Card>
       </div>

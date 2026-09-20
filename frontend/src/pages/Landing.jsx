@@ -10,7 +10,7 @@ import useNetworkStatus from "../hooks/useNetworkStatus.js";
 
 const features = [
   { plate: "01", icon: Activity, title: "Rate Forecasting", model: "RandomForestRegressor", body: "Predicts freight rate movement from route history, lag and rolling signals, calendar features and the available market proxy." },
-  { plate: "02", icon: ShieldAlert, title: "Risk Classification", model: "RandomForestClassifier", body: "Translates historical route volatility into a low, medium or high market-risk read beside each forecast." },
+  { plate: "02", icon: ShieldAlert, title: "Risk Classification", model: "Rule-based score", body: "Combines forecast volatility, rate movement, port congestion and (when fresh data is available) Brent fuel-cost shock into a low, medium or high market-risk read beside each forecast." },
   { plate: "03", icon: Ship, title: "Charter Recommendation", model: "Rule ensemble", body: "Combines forecast direction with port and vessel constraints to suggest a chartering window and feasible class." },
   { plate: "04", icon: FileClock, title: "History & Alerts", model: "Voyage log", body: "Persists forecast inputs and outputs and surfaces higher-risk results for follow-up and reporting." },
 ];
@@ -32,10 +32,6 @@ function CompassPlate() {
       <span className="absolute -bottom-px -left-px h-3 w-3 border-b border-l border-ink/70" />
       <span className="absolute -bottom-px -right-px h-3 w-3 border-b border-r border-ink/70" />
 
-      <div className="flex items-center justify-between border-b border-rule/60 px-4 py-2">
-        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-inksoft">plate 04 — hull lines · bulk carrier</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">scale 1:2400</span>
-      </div>
       <div className="relative h-[320px] sm:h-[400px] lg:h-[458px]">
         <div className="chart-contour pointer-events-none absolute inset-0 opacity-50" />
         {isSlow ? (

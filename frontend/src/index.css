@@ -66,7 +66,8 @@ select option { background:rgb(var(--c-paper)); color:rgb(var(--c-ink)); }
 :where(a,button,input,select,textarea,[tabindex]):focus-visible { outline:2px solid rgb(var(--c-vermilion)); outline-offset:2px; }
 
 /* Existing Leaflet map remains a technical instrument, surrounded by the paper UI. */
-.leaflet-container { background:#e5dcc7; font-family:'IBM Plex Sans',system-ui,sans-serif; }
+/* z-index:0 makes each map its own stacking context so Leaflet's panes/controls (z-index up to 1000) can never paint over the sticky navbar. */
+.leaflet-container { background:#cfe3ee; z-index:0; font-family:'IBM Plex Sans',system-ui,sans-serif; }
 .leaflet-control-attribution { background:rgb(var(--c-paper) / .82)!important; color:rgb(var(--c-rule))!important; font-size:.62rem!important; }
 .leaflet-control-attribution a { color:rgb(var(--c-ink-soft))!important; }
 .route-map-tooltip.leaflet-tooltip { background:rgb(var(--c-paper) / .96); border:1px solid rgb(var(--c-rule) / .6); color:rgb(var(--c-ink)); font-family:'IBM Plex Mono',monospace; font-size:.7rem; box-shadow:none; }
@@ -94,16 +95,17 @@ path.route-course-line { animation:dash-flow 6s linear infinite; }
 .shipment-sheet::before { left:-1px; top:-1px; border-left:1px solid rgb(var(--c-ink) / .8); border-top:1px solid rgb(var(--c-ink) / .8); }
 .shipment-sheet::after { right:-1px; bottom:-1px; border-right:1px solid rgb(var(--c-ink) / .8); border-bottom:1px solid rgb(var(--c-ink) / .8); }
 .shipment-sheet__topline { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:14px 25px 13px; border-bottom:1px solid rgb(var(--c-rule) / .48); }
-.shipment-sheet__code { font:500 10px 'IBM Plex Mono',monospace; letter-spacing:.18em; text-transform:uppercase; color:rgb(var(--c-rule)); }
 .shipment-sheet__grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); column-gap:40px; row-gap:28px; padding:26px 25px 24px; }
 .shipment-sheet__bottom { display:grid; grid-template-columns:1fr auto; gap:22px; align-items:center; margin:0 25px; padding:22px 0 24px; border-top:1px solid rgb(var(--c-rule) / .45); }
 .shipment-sheet__hint { max-width:760px; font-size:13px; line-height:1.75; color:rgb(var(--c-ink-soft)); }
 .shipment-sheet__submit { min-width:210px; }
-.shipment-sheet__advanced { margin:0 25px; border-top:1px solid rgb(var(--c-rule) / .28); padding:12px 0 0; }
-.shipment-sheet__advanced summary { cursor:pointer; list-style:none; font:500 10px 'IBM Plex Mono',monospace; letter-spacing:.18em; text-transform:uppercase; color:rgb(var(--c-rule)); }
+.shipment-sheet__advanced { margin:0 25px; border-top:1px solid rgb(var(--c-rule) / .45); padding:0; }
+.shipment-sheet__advanced summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:52px; cursor:pointer; list-style:none; font:600 12px 'IBM Plex Mono',monospace; letter-spacing:.16em; text-transform:uppercase; color:rgb(var(--c-ink-soft)); transition:color .15s; }
+.shipment-sheet__advanced summary:hover { color:rgb(var(--c-ink)); }
 .shipment-sheet__advanced summary::-webkit-details-marker{display:none}
-.shipment-sheet__advanced summary::after { content:'+'; float:right; font-size:14px; line-height:1; color:rgb(var(--c-rule)); }
+.shipment-sheet__advanced summary::after { content:'+'; display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; flex:none; border:1px solid rgb(var(--c-rule) / .6); font:400 18px/1 'IBM Plex Mono',monospace; color:rgb(var(--c-ink-soft)); }
 .shipment-sheet__advanced[open] summary::after { content:'−'; }
+.shipment-sheet__advanced summary:hover::after { border-color:rgb(var(--c-ink) / .7); color:rgb(var(--c-ink)); }
 .shipment-sheet__advanced-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:28px 40px; padding:18px 0 20px; }
 .shipment-sheet__service-note { grid-column:1/-1; display:flex; align-items:center; gap:8px; margin:0 25px 18px; padding:9px 12px; border:1px solid rgb(var(--c-kelp) / .25); background:rgb(var(--c-kelp) / .05); font:10px 'IBM Plex Mono',monospace; letter-spacing:.04em; color:rgb(var(--c-kelp)); }
 .shipment-sheet__service-note--warn { border-color:rgb(var(--c-brass) / .35); background:rgb(var(--c-brass) / .06); color:rgb(var(--c-brass)); }
@@ -111,7 +113,9 @@ path.route-course-line { animation:dash-flow 6s linear infinite; }
 
 /* The target form uses the old-school underlined worksheet fields, not boxed cards. */
 .shipment-sheet .border-0 { border-radius:0; }
-.shipment-sheet input,.shipment-sheet select { min-height:36px; font-size:14px; }
+.shipment-sheet input,.shipment-sheet select { box-sizing:border-box; height:42px; min-height:42px; padding-top:0; padding-bottom:0; font-size:14px; line-height:1.2; }
+.shipment-sheet select { padding-right:22px; background-repeat:no-repeat; background-position:right 2px center; background-size:12px 12px; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a8797' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+.shipment-sheet select option { font-family:'IBM Plex Mono',monospace; font-size:13px; color:rgb(var(--c-ink)); background:rgb(var(--c-paper)); }
 .shipment-sheet input[type="date"] { color-scheme:light; }
 .shipment-sheet input[type="date"]::-webkit-calendar-picker-indicator { opacity:.75; }
 
@@ -138,15 +142,12 @@ path.route-course-line { animation:dash-flow 6s linear infinite; }
 .result-metric__value--warning { color:rgb(var(--c-vermilion)); font-size:22px; }
 .result-risk-badge { margin-top:4px; }
 
-.analyst-read { display:grid; grid-template-columns:48px 1fr; gap:18px; padding:4px 0 4px 0; }
-.analyst-read__number { font:600 24px/1 'Fraunces',serif; color:rgb(var(--c-vermilion)); border-right:1px solid rgb(var(--c-rule) / .6); padding:2px 15px 0 0; }
-.analyst-read__text { max-width:1100px; margin-top:12px; font:400 clamp(1.55rem,2.7vw,2.1rem)/1.45 'Fraunces',serif; color:rgb(var(--c-ink)); letter-spacing:-.02em; }
+.analyst-read { padding:4px 0; }
+.analyst-read__text { max-width:900px; margin-top:10px; font:400 clamp(1.05rem,1.5vw,1.25rem)/1.6 'Fraunces',serif; color:rgb(var(--c-ink)); letter-spacing:-.01em; }
 
 .voyage-plot { border:1px solid rgb(var(--c-rule) / .6); background:rgb(var(--c-parchment) / .72); }
 .voyage-plot__header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:12px 20px; border-bottom:1px solid rgb(var(--c-rule) / .48); }
 .voyage-plot__map { height:360px; }
-.voyage-plot .leaflet-container { filter:sepia(.35) saturate(.65) contrast(.88); background:#e7deca; }
-.voyage-plot .leaflet-tile { filter:grayscale(1) sepia(.2) brightness(1.08); }
 
 .result-section { border-top:1px solid rgb(var(--c-rule) / .5); padding-top:22px; }
 .result-section__eyebrow { font:500 10px 'IBM Plex Mono',monospace; text-transform:uppercase; letter-spacing:.2em; color:rgb(var(--c-rule)); }
@@ -179,8 +180,7 @@ path.route-course-line { animation:dash-flow 6s linear infinite; }
   .shipment-sheet__bottom { grid-template-columns:1fr; }
   .shipment-sheet__submit { width:100%; }
   .result-hero__left,.result-hero__right { padding-left:20px; padding-right:20px; }
-  .analyst-read { grid-template-columns:36px 1fr; gap:12px; }
-  .analyst-read__text { font-size:1.35rem; }
+  .analyst-read__text { font-size:1.05rem; }
   .voyage-plot__header { align-items:flex-start; flex-direction:column; }
   .voyage-plot__map { height:300px; }
 }

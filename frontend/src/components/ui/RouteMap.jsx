@@ -39,8 +39,8 @@ function portIcon(color) {
   });
 }
 
-const ORIGIN_ICON = portIcon("#7CF0E4");
-const DEST_ICON = portIcon("#FFB020");
+const ORIGIN_ICON = portIcon("#2FA866");
+const DEST_ICON = portIcon("#E5732B");
 
 // Build a maritime corridor using known sea lanes and chokepoints instead of
 // drawing a straight/geometric line between the two ports.
@@ -122,7 +122,7 @@ export default function RouteMap({ origin, destination, className }) {
         zoomControl={false}
         attributionControl={true}
         className="h-full w-full"
-        style={{ background: "#070B12" }}
+        style={{ background: "#cfe3ee" }}
       >
         <TileLayer
           className="route-map-dark-tiles"
@@ -140,7 +140,7 @@ export default function RouteMap({ origin, destination, className }) {
             <Polyline
               positions={path}
               pathOptions={{
-                color: "#22D3C4",
+                color: "#1D4ED8",
                 weight: 3,
                 opacity: 0.92,
                 dashArray: "8 8",
@@ -153,9 +153,9 @@ export default function RouteMap({ origin, destination, className }) {
                 center={point}
                 radius={2.5}
                 pathOptions={{
-                  color: "#22D3C4",
+                  color: "#1D4ED8",
                   weight: 1,
-                  fillColor: "#22D3C4",
+                  fillColor: "#1D4ED8",
                   fillOpacity: 0.75,
                 }}
               />
