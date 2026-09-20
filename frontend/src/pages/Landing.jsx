@@ -24,6 +24,7 @@ const pipeline = [
 ];
 
 function CompassPlate() {
+  const { isSlow } = useNetworkStatus();
   return (
     <figure className="relative border border-ink/25 bg-parchment/70">
       <span className="absolute -left-px -top-px h-3 w-3 border-l border-t border-ink/70" />
