@@ -292,6 +292,12 @@ The FastAPI app was also exercised directly with its test client. The following 
 - `ml-service/data/synthetic/README.md` — synthetic-data disclosure.
 
 
+### Route-freight model files and memory
+
+The 1,005 route/horizon models are stored as one small file per lane in `ml-service/models/lanes/` (plus `index.json`). The service loads a lane's models only when that lane is requested and keeps the 24 most recently used in memory (`ROUTE_MODEL_CACHE_LANES` to change this). Measured on this project, the service stays around 210-250 MB RSS instead of about 1.3 GB, so it fits Render's 512 MB free tier. Predictions are identical to the previous all-in-memory loading.
+
+After retraining (`python scripts/train_route_freight_grid.py` or `scripts/train_route_freight.py`), the scripts re-pack the result into `models/lanes/` automatically. If you call `route_freight_model.train()` directly, run `export_lane_files("models", remove_monolithic=True)` afterwards; the loader also still works with the old `route_freight_model_h{1,2,3}.joblib` files when `models/lanes/` is absent.
+
 ### Brent fuel-cost signal
 
 The risk score has an optional sixth factor, `fuel_shock`, based on the 30-day move in Brent crude (weight 0.10, taken from volatility and rate-shock). `ml-service/app/brent.py` refreshes `data/production/brent_oil.csv` at startup and then daily from FRED (`DCOILBRENTEU`, no API key; data lags by a few days). Request handling only reads the local cache, so a failed download never affects forecasts. If the data is missing or older than 14 days the factor drops out and the score reverts to its original five factors. Each forecast's `risk_factors.brent` reports the as-of date, and `GET /brent/status` on the ML service shows cache health. Set `BRENT_ENABLED=false` to disable it. The score is a transparent heuristic, not a validated model.

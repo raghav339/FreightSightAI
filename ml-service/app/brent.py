@@ -131,7 +131,7 @@ def write_cache(series: list[tuple[date, float]], path: Path | None = None) -> N
 # --------------------------------------------------------------------------
 # Fetching
 # --------------------------------------------------------------------------
-def fetch_and_cache(url: str | None = None, path: Path | None = None, timeout: float = 20.0) -> int:
+def fetch_and_cache(url: str | None = None, path: Path | None = None, timeout: float = 60.0) -> int:
     """Download the full series and replace the cache. Returns the row count.
 
     Raises on network/parse problems or if the download looks too small, so a

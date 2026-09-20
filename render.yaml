@@ -21,6 +21,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"
+      # Show Python log lines immediately instead of in delayed batches.
+      - key: PYTHONUNBUFFERED
+        value: "1"
       # FastAPI CORS: allow the browser frontend to access ML endpoints
       # only when they are called directly. The normal application flow
       # is Frontend -> Backend -> ML.

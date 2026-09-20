@@ -20,6 +20,7 @@ The route-freight models are large, so run files one at a time if memory is tigh
 | `test_route_freight_model.py` | Route-freight model training and lookup |
 | `test_route_model.py` | `RouteModel` wrapper |
 | `test_synthetic_market_proxy.py` | Synthetic route-rate fallback |
+| `test_lazy_models.py` | Per-lane lazy model loading, LRU cache, export and stale-file handling |
 | `test_brent.py` | Brent cache, staleness handling and the fuel-shock risk factor |
 | `test_baseline_guardrail.py` | Naive-persistence guardrail for route models |
 

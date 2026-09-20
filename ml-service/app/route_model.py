@@ -28,9 +28,14 @@ MODELS = ROOT / "models"
 
 
 class RouteModel:
-    def __init__(self, models_dir: str | Path | None = None):
+    def __init__(self, models_dir: str | Path | None = None, route_freight=None):
         self.models_dir = Path(models_dir) if models_dir else MODELS
-        self.route_freight = RouteFreightModel(self.models_dir) if RouteFreightModel else None
+        # Pass an already-loaded RouteFreightModel to share it instead of
+        # loading the ~180 MB of joblib files a second time.
+        if route_freight is not None:
+            self.route_freight = route_freight
+        else:
+            self.route_freight = RouteFreightModel(self.models_dir) if RouteFreightModel else None
 
     def predict(self, origin, destination, shipment_date, current_spot_rate_usd_per_ton=None, commodity=None):
         if self.route_freight is None:

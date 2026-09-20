@@ -150,7 +150,10 @@ def get_route_bundle() -> RouteModel:
         with _route_bundle_lock:
             if _route_bundle is None:
                 try:
-                    _route_bundle = RouteModel()
+                    # Reuse the route-freight models ModelBundle already loaded
+                    # (loading them twice roughly doubles RAM use, which matters
+                    # on small hosts such as Render's free tier).
+                    _route_bundle = RouteModel(route_freight=get_bundle().route_freight)
                 except Exception as exc:
                     raise HTTPException(status_code=503, detail=f"Route model unavailable: {exc}") from exc
     return _route_bundle

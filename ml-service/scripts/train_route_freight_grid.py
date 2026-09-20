@@ -38,7 +38,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from route_freight_model import _key, train, _hash_file, SCHEMA_VERSION, MIN_OBSERVATIONS, NUMERIC, CATEGORICAL  # noqa: E402
+from route_freight_model import export_lane_files, _key, train, _hash_file, SCHEMA_VERSION, MIN_OBSERVATIONS, NUMERIC, CATEGORICAL  # noqa: E402
 
 OBS_FILE = ROOT / "data" / "synthetic" / "route_freight_observations.csv"
 MODELS_DIR = ROOT / "models"
@@ -131,6 +131,11 @@ def main():
             ),
         }
         (MODELS_DIR / "route_freight_model_metadata.json").write_text(json.dumps(final_meta, indent=2))
+
+    # Re-pack into per-lane files so the service can load models lazily
+    # (needed to fit small hosts) and drop the RAM-hungry monolithic files.
+    n_lanes = export_lane_files(MODELS_DIR, remove_monolithic=True)
+    print(f"exported {n_lanes} lane files to {MODELS_DIR / 'lanes'}")
 
     print(f"routes_with_models: {len(final_meta['routes_with_models'])}")
     print(f"baseline_summary: {final_meta['baseline_summary']}")
