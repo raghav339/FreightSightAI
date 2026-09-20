@@ -16,7 +16,7 @@ const ML_BACKED_PATH_HINTS = [
 // "waking up the forecasting service" is misleading (it isn't asleep,
 // it's just doing 11x the work), so they get their own banner phase/copy
 // instead of being lumped in with an actual cold-start probe.
-const FAN_OUT_PATH_HINTS = ["/compare-origins", "/idle-alternatives"];
+const FAN_OUT_PATH_HINTS = ["/compare-origins", "/idle-alternatives", "/decision-brief"];
 const SLOW_HINT_DELAY_MS = 4000;
 const COLD_START_DELAY_MS = 15000;
 
@@ -46,7 +46,10 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  if (looksMlBacked(config.url)) {
+  // Background enrichment calls (e.g. the port-radar strip on the forecast page)
+  // opt out with `skipWakeBanner` so a slow one doesn't hijack the page with a
+  // "waking up" banner the user did not cause.
+  if (looksMlBacked(config.url) && !config.skipWakeBanner) {
     const isFanOut = looksFanOut(config.url);
     // Tier 1: quick, honest "still working" hint — never claims a cold start.
     config.__mlSlowTimer = setTimeout(() => {

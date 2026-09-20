@@ -93,4 +93,14 @@ const decisionLimiter = rateLimit({
   message: "Too many decision requests. Please wait a moment and try again.",
 });
 
-module.exports = { rateLimit, authLimiter, decisionLimiter };
+// The Decision Brief fans out to three ml-service endpoints per request
+// (what-if, COA optimizer, and a compare-origins call that itself prices every
+// loading port), so it gets a tighter ceiling than the single-call endpoints.
+const decisionBriefLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.DECISION_BRIEF_RATE_LIMIT_MAX) || 10, // env override lets the test suite exercise the route freely
+  name: "decision-brief",
+  message: "Too many decision brief requests. Please wait a moment and try again.",
+});
+
+module.exports = { rateLimit, authLimiter, decisionLimiter, decisionBriefLimiter };

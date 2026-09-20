@@ -18,6 +18,8 @@ frontend/dist-ssr/
 
 # Python
 ml-service/**/__pycache__/
+*.pyc
+ml-service/data/production/aisstream_live.sqlite3
 ml-service/venv/
 ml-service/.venv/
 

@@ -14,8 +14,12 @@ export default function WakingBanner() {
     ? "forecasting service is processing the sheet"
     : "forecasting service is waking from an idle instance";
 
-  return <div role="status" aria-live="polite" className="pointer-events-none fixed inset-x-0 top-[4.55rem] z-[60] flex justify-center px-4 pt-3">
-    <div className="pointer-events-auto flex max-w-[min(92vw,760px)] items-center gap-3 border border-rule/55 bg-parchment/96 px-4 py-2.5 font-mono text-[9px] uppercase tracking-[0.15em] text-ink shadow-[0_2px_0_rgb(255_255_255_/_0.45)] backdrop-blur-[2px]">
+  // NOTE: no longer owns its own fixed positioning — StatusBanners (in
+  // App.jsx) stacks this alongside ConnectionBanner in one fixed column so
+  // an ML cold-start and a dropped connection can both show at once
+  // without overlapping each other.
+  return (
+    <div role="status" aria-live="polite" className="pointer-events-auto flex max-w-[min(92vw,760px)] items-center gap-3 border border-rule/55 bg-parchment/96 px-4 py-2.5 font-mono text-[9px] uppercase tracking-[0.15em] text-ink shadow-[0_2px_0_rgb(255_255_255_/_0.45)] backdrop-blur-[2px]">
       <span className="relative flex h-2.5 w-2.5 shrink-0">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vermilion opacity-45" />
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full border border-vermilion/70 bg-paper" />
@@ -25,5 +29,5 @@ export default function WakingBanner() {
       <span>{message}</span>
       <span className="ml-auto hidden font-mono text-[8px] tracking-[0.14em] text-rule sm:inline">status</span>
     </div>
-  </div>;
+  );
 }

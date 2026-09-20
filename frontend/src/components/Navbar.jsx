@@ -54,6 +54,8 @@ const links = [
   { to: "/coa-optimizer", label: "COA Optimizer" },
   { to: "/compare", label: "Compare" },
   { to: "/idle-vessel", label: "Idle Vessel" },
+  { to: "/live-fleet", label: "Live Fleet" },
+  { to: "/port-radar", label: "Port Radar" },
   { to: "/history", label: "History" },
   { to: "/about", label: "About" },
 ];
@@ -109,7 +111,7 @@ export default function Navbar() {
             {status === "offline" ? <WifiOff className="h-3 w-3" /> : <Radio className={cn("h-3 w-3", status === "online" && "animate-pulse")} />}
             {status === "online" ? "Console online" : status === "offline" ? "Console offline" : "Checking"}
           </span>
-          <span className="hidden border border-brass/50 px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-brass md:inline-flex">Radar</span>
+          <NavLink to="/live-fleet" className="hidden border border-brass/50 px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-brass transition-colors hover:border-vermilion hover:text-vermilion md:inline-flex" title="Live AIS fleet map">Radar</NavLink>
 
           {isAuthenticated ? (
             <div className="hidden items-center gap-2 lg:flex">

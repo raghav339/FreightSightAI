@@ -114,7 +114,7 @@ router.get("/dashboard-summary", async (req, res) => {
        GROUP BY risk_label`
     );
 
-    let bdryHistory = [];
+    let routeFreightHistory = [];
 
     try {
       const { data } = await withRetry(
@@ -122,15 +122,15 @@ router.get("/dashboard-summary", async (req, res) => {
         { initialTimeout: 15000, retries: 1 }
       );
 
-      bdryHistory = data.bdry_history_12m || [];
+      routeFreightHistory = data.route_freight_history_12m || [];
     } catch (err) {
-      console.error("Could not load BDRY history:", err.message);
+      console.error("Could not load route-freight history:", err.message);
     }
 
     res.json({
       by_route: byRoute,
       risk_distribution: riskDistribution,
-      bdry_history_12m: bdryHistory,
+      route_freight_history_12m: routeFreightHistory,
     });
   } catch (err) {
     console.error("dashboard-summary failed:", err.message);

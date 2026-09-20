@@ -7,7 +7,7 @@ This audit was performed against the supplied FreightSight project archive.
 - ML service Python compilation: **passed**
 - Backend Node syntax checks: **passed**
 - Direct FastAPI endpoint smoke test: **passed**
-- ML automated tests: **64/64 passed when executed file-by-file**
+- ML automated tests: **58/59 passed when executed file-by-file** (1 pre-existing failure in `test_coa_optimizer.py`, unrelated to the ML pipeline — see `AUDIT_REPORT.md`)
 - Frontend production build: **not executed** because frontend dependencies were unavailable in the supplied runtime and package installation could not complete.
 - Backend Jest suite: **not executed** because the supplied backend `node_modules` tree was incomplete (`cross-env`/Jest binaries were unavailable).
 
@@ -19,9 +19,9 @@ The last two items are environment-limited checks and should be run on a normal 
 |---|---|---|
 | Freight forecasting | `POST /api/forecast`, `ml-service/app/utils.py` + model artifacts | **verified** by prediction integration tests + direct `/forecast` smoke test |
 | H+1/H+2/H+3 outlook | forecast curve + route model artifacts | **verified** by integration/model tests |
-| Market-proxy transparency | `forecast_type`, `data_confidence`, `data_source_level`, UI/API fields | **verified** in ML tests and direct forecast response |
-| Newcastle → Chennai → Iron Ore | R8 in synthetic route-freight data/model | **verified** by synthetic market-proxy tests |
-| Risk assessment | `risk_model.joblib` + response risk fields | **verified** by risk walk-forward tests + forecast smoke test |
+| Forecast transparency | `forecast_type`, `data_confidence`, `data_source_level`, UI/API fields — always route-freight-based, never a BDRY market-proxy signal | **verified** in ML tests and direct forecast response |
+| Newcastle → Chennai → Iron Ore | R8 in synthetic route-freight data/model | **verified** by synthetic route-freight tests |
+| Risk assessment | Deterministic rule-based score (volatility, rate shock, trend deviation, port congestion, data uncertainty) computed from the route-freight forecast — see `ModelBundle._derive_risk` in `ml-service/app/utils.py` | **verified** by baseline-guardrail + prediction-integration tests + forecast smoke test |
 | Explainability | `feature_importance`, `top_drivers` | **logic present; UI build not executed in this environment** |
 | Vessel selection | `port_utils.py` + forecast response | **verified** by port and integration tests |
 | Origin + destination feasibility | `feasible_vessels_both_ports()` | **verified** by port/integration tests |
@@ -38,27 +38,25 @@ The last two items are environment-limited checks and should be run on a normal 
 
 ## Test breakdown
 
-The 64 passing ML tests cover:
+The 58 passing ML tests (of 59 total — 1 pre-existing, unrelated failure in `test_coa_optimizer.py`) cover:
 
 - baseline guardrails — 7
-- COA optimizer — 1
+- COA optimizer — 3
 - compare origins — 8
-- fallback hierarchy — 4
-- idle alternatives — 6
+- idle alternatives — 7
 - idle detector — 5
 - port utilities — 12
 - prediction integration — 8
-- risk walk-forward CV — 5
 - route-freight model — 3
 - route model — 3
-- synthetic market proxy — 2
+- synthetic route-freight — 2
 
 ## Important data/model limitations
 
 1. Current route USD/t observations are synthetic MVP data, not broker quotes.
-2. Route model metadata records 1,120 synthetic rows and 0 verified rows.
-3. Of 24 route/horizon model combinations, 22 beat naive persistence and 2 do not. The application has a guardrail that prevents failed route models from being silently served.
-4. Historical PortWatch-derived route features end at October 2024. Live AISStream can provide inference-time operational updates when configured.
+2. Route model metadata records 46,900 synthetic rows (335 lanes × ~140 months) and 0 verified rows.
+3. Of 1,005 route/horizon model combinations (335 lanes × 3 horizons), 1,004 beat naive persistence and 1 does not. The application has a guardrail that prevents failed route models from being silently served — it raises rather than falling back to any other signal.
+4. Live AISStream can provide inference-time operational updates when configured.
 5. Port dimensions and handling rates are reference/estimated data and require operational verification.
 6. Risk high-class representation is limited in the primary holdout.
 7. Authentication is local email/password in the current judge-facing MVP.

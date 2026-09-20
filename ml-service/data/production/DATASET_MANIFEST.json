@@ -1,23 +1,92 @@
 {
-  "mode": "production",
-  "source": "User-supplied ML_datasets archive",
-  "files": [],
-  "derived_files": [
+  "directory": "production",
+  "generated_at": "2026-09-20T13:58:32.657503+00:00",
+  "generator": "ml-service/scripts/generate_data_manifest.py",
+  "note": "Production data directory. Populate with verified real datasets matching the schemas documented in data/README.md, then re-run this script.",
+  "files": [
     {
-      "file": "route_monthly_features.csv",
-      "source": "Daily_Port_Activity_Data_and_Trade_Estimates.csv",
-      "purpose": "AIS-derived route activity features"
+      "filename": "brent_oil.csv",
+      "source": "UNSET \u2014 real dataset not yet placed in this directory.",
+      "source_url": null,
+      "retrieval_date": null,
+      "coverage_period": {
+        "start": "1987-05-20",
+        "end": "2026-09-09",
+        "date_column": "date"
+      },
+      "schema_version": "1.0.0",
+      "row_count": 14358,
+      "column_count": 2,
+      "missingness_pct": 0.0,
+      "file_sha256_short": "7b71ebc8ba838d4a",
+      "validation_status": "not_yet_validated",
+      "approval_status": "pending",
+      "approved_by": null,
+      "approved_at": null
     },
     {
-      "file": "vessel_class_master.csv",
-      "source": "port_vessel_compatibility_(cargo_ships)_clean.csv",
-      "purpose": "class-level vessel dimensions/capacity"
+      "filename": "global_cargo_ships.csv",
+      "source": "UNSET \u2014 real dataset not yet placed in this directory.",
+      "source_url": null,
+      "retrieval_date": null,
+      "coverage_period": null,
+      "schema_version": "1.0.0",
+      "row_count": 4,
+      "column_count": 6,
+      "missingness_pct": 0.0,
+      "file_sha256_short": "49fd8534d5d5751b",
+      "validation_status": "not_yet_validated",
+      "approval_status": "pending",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "filename": "route_freight_observations.csv",
+      "source": "UNSET \u2014 real dataset not yet placed in this directory.",
+      "source_url": null,
+      "retrieval_date": null,
+      "coverage_period": null,
+      "schema_version": "1.0.0",
+      "row_count": 4,
+      "column_count": 23,
+      "missingness_pct": 0.0,
+      "file_sha256_short": "3d6727f000948409",
+      "validation_status": "not_yet_validated",
+      "approval_status": "pending",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "filename": "vessel_class_master.csv",
+      "source": "UNSET \u2014 real dataset not yet placed in this directory.",
+      "source_url": null,
+      "retrieval_date": null,
+      "coverage_period": null,
+      "schema_version": "1.0.0",
+      "row_count": 4,
+      "column_count": 6,
+      "missingness_pct": 0.0,
+      "file_sha256_short": "49fd8534d5d5751b",
+      "validation_status": "not_yet_validated",
+      "approval_status": "pending",
+      "approved_by": null,
+      "approved_at": null
+    },
+    {
+      "filename": "world_port_index_clean.csv",
+      "source": "UNSET \u2014 real dataset not yet placed in this directory.",
+      "source_url": null,
+      "retrieval_date": null,
+      "coverage_period": null,
+      "schema_version": "1.0.0",
+      "row_count": 3630,
+      "column_count": 23,
+      "missingness_pct": 28.096,
+      "file_sha256_short": "11f0b238bd34d9c7",
+      "validation_status": "not_yet_validated",
+      "approval_status": "pending",
+      "approved_by": null,
+      "approved_at": null
     }
-  ],
-  "critical_gaps": [
-    "No historical route-level freight-rate labels in USD/t",
-    "No direct AIS position/track file; PortWatch is AIS-derived fallback",
-    "No coal/iron-ore price series",
-    "Port infrastructure LOA/beam/draft/handling data for origin ports is partly illustrative"
   ]
 }

@@ -266,10 +266,7 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
 
 
 // -------------------------------------------------------------------------
-// Route-level AIS-enhanced freight proxy + COA optimizer.
-// These endpoints are deliberately separate from /forecast because the
-// legacy forecast response uses BDRY as a market proxy and should not be
-// silently relabeled as a true route freight rate.
+// Route-level synthetic freight forecast + COA optimizer.
 // -------------------------------------------------------------------------
 router.post("/route-forecast", decisionLimiter, optionalAuth, async (req, res) => {
   try {

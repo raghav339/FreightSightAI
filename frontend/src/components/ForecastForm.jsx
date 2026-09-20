@@ -1,9 +1,19 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, Compass, Loader2, RotateCw } from "lucide-react";
+import { AlertTriangle, Compass, Loader2, RotateCw, WifiOff } from "lucide-react";
 import api from "../api/client.js";
 import { Field, Input, Select } from "./ui/field.jsx";
 import { Button } from "./ui/button.jsx";
+import useNetworkStatus from "../hooks/useNetworkStatus.js";
+import {
+  getClosestForecast,
+  getExactForecast,
+  getMeta,
+  getVesselTypes,
+  saveForecastResult,
+  saveMeta,
+  saveVesselTypes,
+} from "../lib/forecastCache.js";
 
 const EMPTY_FORM = {
   commodity: "",
@@ -35,30 +45,65 @@ export default function ForecastForm({ onResult }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [metaError, setMetaError] = useState(null);
+  const [metaOffline, setMetaOffline] = useState(false);
   const [metaLoading, setMetaLoading] = useState(true);
   const [retryToken, setRetryToken] = useState(0);
+  const { online } = useNetworkStatus();
 
   useEffect(() => {
     let cancelled = false;
 
+    // Resilience mode: with no connection at all, don't burn the retry
+    // loop dialing a service we already know is unreachable — go straight
+    // to whatever route/vessel list was cached from the last time this
+    // loaded successfully, so the form (and offline forecast lookup) still
+    // works.
+    function useOfflineMeta(errorIfNone) {
+      const cachedMeta = getMeta();
+      const cachedVessels = getVesselTypes();
+      if (cachedMeta?.data) {
+        setMeta(cachedMeta.data);
+        setVesselTypes(cachedVessels?.data || []);
+        setMetaOffline(true);
+        setMetaError(null);
+        setMetaLoading(false);
+        return true;
+      }
+      if (errorIfNone) {
+        setMetaError("Could not load route options. Is the ML service running?");
+        setMetaLoading(false);
+      }
+      return false;
+    }
+
     async function loadMeta() {
       setMetaLoading(true);
       setMetaError(null);
+      setMetaOffline(false);
+
+      if (!navigator.onLine) {
+        useOfflineMeta(true);
+        return;
+      }
+
       for (let attempt = 1; attempt <= MAX_META_RETRIES; attempt++) {
         try {
           const { data } = await api.get("/routes");
           if (cancelled) return;
           setMeta(data);
+          saveMeta(data);
           setMetaLoading(false);
           api.get("/vessels").then(({ data: vData }) => {
-            if (!cancelled) setVesselTypes(vData.vessel_types || []);
+            if (cancelled) return;
+            const types = vData.vessel_types || [];
+            setVesselTypes(types);
+            saveVesselTypes(types);
           }).catch(() => {});
           return;
         } catch (err) {
           if (cancelled) return;
           if (attempt === MAX_META_RETRIES) {
-            setMetaError("Could not load route options. Is the ML service running?");
-            setMetaLoading(false);
+            if (!useOfflineMeta(true)) return;
             return;
           }
           await new Promise((resolve) => setTimeout(resolve, META_RETRY_BASE_MS * attempt));
@@ -67,10 +112,26 @@ export default function ForecastForm({ onResult }) {
     }
     loadMeta();
     return () => { cancelled = true; };
-  }, [retryToken]);
+    // Re-run automatically when connectivity is restored (not just on
+    // manual Retry), so coming back online upgrades cached meta to live
+    // meta without the user having to notice and click anything.
+  }, [retryToken, online]);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  // Resilience mode: serve a cached forecast instead of a hard failure
+  // when we're offline or the live service is unreachable. An exact
+  // route+commodity+cargo+date match is used as-is; otherwise the closest
+  // cargo weight on the same lane is used and clearly labelled
+  // approximate, so nobody mistakes a stand-in number for a fresh one.
+  function tryCacheFallback(payload) {
+    const exact = getExactForecast(payload);
+    const entry = exact || getClosestForecast(payload);
+    if (!entry) return false;
+    onResult({ ...entry.result, _cached: true, _cachedAt: entry.savedAt, _approx: !exact }, payload);
+    return true;
   }
 
   async function handleSubmit(e) {
@@ -80,25 +141,38 @@ export default function ForecastForm({ onResult }) {
       setError("Total program tonnage can't be less than the cargo weight per lift.");
       return;
     }
+    const payload = {
+      ...form,
+      cargo_weight_tons: Number(form.cargo_weight_tons),
+      cargo_volume_cbm: form.cargo_volume_cbm ? Number(form.cargo_volume_cbm) : undefined,
+      distance_km: form.distance_km ? Number(form.distance_km) : undefined,
+      delay_days: form.delay_days ? Number(form.delay_days) : 0,
+      vessel_type: form.vessel_type || undefined,
+      contract_duration_months: form.contract_duration_months ? Number(form.contract_duration_months) : undefined,
+      total_program_tons: form.total_program_tons ? Number(form.total_program_tons) : undefined,
+    };
+
+    if (!navigator.onLine) {
+      if (!tryCacheFallback(payload)) {
+        setError("You're offline and no cached forecast exists yet for this route, commodity and cargo weight.");
+      }
+      return;
+    }
+
     setLoading(true);
     try {
-      const payload = {
-        ...form,
-        cargo_weight_tons: Number(form.cargo_weight_tons),
-        cargo_volume_cbm: form.cargo_volume_cbm ? Number(form.cargo_volume_cbm) : undefined,
-        distance_km: form.distance_km ? Number(form.distance_km) : undefined,
-        delay_days: form.delay_days ? Number(form.delay_days) : 0,
-        vessel_type: form.vessel_type || undefined,
-        contract_duration_months: form.contract_duration_months ? Number(form.contract_duration_months) : undefined,
-        total_program_tons: form.total_program_tons ? Number(form.total_program_tons) : undefined,
-      };
       const { data } = await api.post("/forecast", payload);
+      saveForecastResult(payload, data);
       onResult(data, payload);
     } catch (err) {
+      const isNetworkFailure = !err.response;
+      if (isNetworkFailure && tryCacheFallback(payload)) return;
       setError(
         err.response?.data?.error ||
         (Array.isArray(err.response?.data?.details) ? err.response.data.details.join(", ") : null) ||
-        "Forecast request failed. Is the ML service running?"
+        (isNetworkFailure
+          ? "Could not reach the forecasting service, and no cached forecast exists yet for this route."
+          : "Forecast request failed. Is the ML service running?")
       );
     } finally {
       setLoading(false);
@@ -175,6 +249,12 @@ export default function ForecastForm({ onResult }) {
 
       {metaLoading && !metaError && (
         <div className="shipment-sheet__service-note"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting to the forecasting service…</div>
+      )}
+      {metaOffline && !metaError && (
+        <div className="shipment-sheet__service-note">
+          <WifiOff className="h-3.5 w-3.5" />
+          <span>Offline — using the route list saved from your last connected session. Submitting will look up a cached forecast for this route.</span>
+        </div>
       )}
       {metaError && (
         <div className="shipment-sheet__service-note shipment-sheet__service-note--warn">

@@ -5,7 +5,7 @@
 // from the saved forecast_requests/forecast_results row.
 const express = require("express");
 const PDFDocument = require("pdfkit");
-const db = require("../db");
+const { loadForecastRow } = require("../utils/forecastLookup");
 const { optionalAuth } = require("../middleware/auth");
 const L = require("../utils/pdfCopy");
 
@@ -40,15 +40,7 @@ router.get("/forecast/:resultId/pdf", optionalAuth, async (req, res) => {
 
   let row;
   try {
-    const rows = await db.query(
-      `SELECT fr.*, q.commodity, q.origin_port, q.destination_port, q.shipment_date,
-              q.cargo_weight_tons, q.shipment_mode, q.contract_duration_months, q.total_program_tons
-       FROM forecast_results fr
-       JOIN forecast_requests q ON q.id = fr.request_id
-       WHERE fr.id = ? AND (q.user_id = ? OR q.user_id IS NULL)`,
-      [resultId, req.user?.id ?? -1]
-    );
-    row = rows[0];
+    row = await loadForecastRow(resultId, req.user?.id);
   } catch (err) {
     console.error("pdf lookup failed:", err.message);
     return res.status(500).json({ error: "Could not load forecast for PDF export" });
@@ -92,7 +84,7 @@ router.get("/forecast/:resultId/pdf", optionalAuth, async (req, res) => {
   // data_source_level are stored on every forecast_results row (see
   // backend/src/routes/forecast.js); this was previously computed by the
   // ML service but discarded before it ever reached the PDF or the UI.
-  if (row.forecast_type === "market_proxy") {
+  if (row.forecast_type === "synthetic_route") {
     doc.fontSize(9).fillColor("#92400e").text(L.proxyDisclaimer, { width: 495 }).moveDown(0.4);
   }
   if (row.data_confidence || row.data_source_level) {
@@ -122,7 +114,7 @@ router.get("/forecast/:resultId/pdf", optionalAuth, async (req, res) => {
 
   // (a) Rate / market timing
   section(L.rateForecast);
-  doc.text(`${L.bdryProxy}: $${money(row.predicted_freight_rate_usd_per_ton)}`);
+  doc.text(`${L.predictedRate}: $${money(row.predicted_freight_rate_usd_per_ton)}`);
   doc.text(`${L.marketRisk}: ${row.risk_label?.toUpperCase()} (${L.confidence} ${row.risk_confidence != null ? (row.risk_confidence * 100).toFixed(1) + "%" : "—"})`);
   doc.text(`${L.charterWindow}: ${row.recommended_charter_window || "—"}`);
 

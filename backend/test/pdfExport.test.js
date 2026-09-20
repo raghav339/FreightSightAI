@@ -36,7 +36,7 @@ describe("GET /api/forecast/:resultId/pdf", () => {
       userId: owner.id,
       overrides: {
         route: "Newcastle-Paradip",
-        forecast_type: "market_proxy",
+        forecast_type: "synthetic_route",
         data_confidence: "medium",
       },
     });

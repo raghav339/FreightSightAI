@@ -30,15 +30,12 @@ body {
 ::-webkit-scrollbar-thumb { background: rgb(var(--c-rule) / .48); border: 2px solid rgb(var(--c-paper)); }
 
 /* Nautical drafting language */
-.chart-grid { background-image: repeating-linear-gradient(0deg, rgb(var(--c-rule) / .15) 0 1px, transparent 1px 34px), repeating-linear-gradient(90deg, rgb(var(--c-rule) / .15) 0 1px, transparent 1px 34px); }
 .chart-grid-fine { background-image: repeating-linear-gradient(0deg, rgb(var(--c-rule) / .10) 0 1px, transparent 1px 12px), repeating-linear-gradient(90deg, rgb(var(--c-rule) / .10) 0 1px, transparent 1px 12px); }
 .chart-contour { background-image: repeating-radial-gradient(circle at 50% 52%, transparent 0 26px, rgb(var(--c-rule) / .24) 26px 27px); }
 .chart-hatch { background-image: repeating-linear-gradient(45deg, rgb(var(--c-rule) / .24) 0 1px, transparent 1px 7px); }
 .paper-grain::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.17; mix-blend-mode:multiply; background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='140' height='140' filter='url(%23n)'/></svg>"); }
 
-.fs-panel { position:relative; overflow:hidden; border:1px solid rgb(var(--c-rule) / .5); background:rgb(var(--c-parchment) / .82); box-shadow:0 1px 0 rgb(255 255 255 / .55) inset; }
 .fs-kicker { font-family:'IBM Plex Mono', monospace; font-size:10px; font-weight:500; text-transform:uppercase; letter-spacing:.20em; color:rgb(var(--c-rule)); }
-.fs-number { font-family:'Fraunces', serif; font-weight:600; letter-spacing:-.045em; color:rgb(var(--c-ink)); }
 .tabular { font-variant-numeric: tabular-nums; }
 
 /* Re-map legacy component tokens into the new paper system. */
@@ -79,8 +76,6 @@ path.route-course-line { animation:dash-flow 6s linear infinite; }
 @keyframes dash-flow { to { stroke-dashoffset:-200; } }
 @keyframes lane-scroll { from { transform:translate3d(0,0,0); } to { transform:translate3d(-50%,0,0); } }
 .lane-scroll { animation:lane-scroll 42s linear infinite; }
-@keyframes pulse-ring { 0% { transform:scale(.72); opacity:.55; } 100% { transform:scale(1.7); opacity:0; } }
-.animate-pulse-ring { animation:pulse-ring 2.2s ease-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .lane-scroll { animation:none; }

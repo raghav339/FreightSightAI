@@ -12,7 +12,7 @@ import { Badge } from "./ui/badge.jsx";
 
 const DEBOUNCE_MS = 350;
 
-export default function WhatIfPanel({ baseRequest }) {
+export default function WhatIfPanel({ baseRequest, onScenarioChange }) {
   const baseCargo = Number(baseRequest?.cargo_weight_tons) || 50000;
   const baseDuration = Number(baseRequest?.contract_duration_months) || 6;
   const cargoStep = baseCargo < 1000 ? 10 : baseCargo < 10000 ? 100 : 1000;
@@ -61,6 +61,16 @@ export default function WhatIfPanel({ baseRequest }) {
     return () => clearTimeout(timerRef.current);
   }, [cargo, duration, baseRequest]);
 
+  // Report the live scenario upward (debounced result included) so a
+  // sibling panel — e.g. the decision simulator — can compare procurement
+  // options against whatever cargo/duration the user last dragged to,
+  // instead of only ever seeing the original base-case forecast inputs.
+  useEffect(() => {
+    if (!onScenarioChange) return;
+    onScenarioChange({ cargo, duration, result });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cargo, duration, result]);
+
   const voyages = useMemo(() => {
     if (!baseRequest?.total_program_tons || !cargo) return null;
     return Math.max(1, Math.ceil(Number(baseRequest.total_program_tons) / cargo));
@@ -69,7 +79,7 @@ export default function WhatIfPanel({ baseRequest }) {
   if (!baseRequest) return null;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+    <motion.div id="whatif-panel" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
       <Card>
         <CardHeader className="flex flex-row items-center gap-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-signal/10 text-signal">

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from app.idle_detector import Observation, detect_idle_vessel, MIN_IDLE_HOURS, PORT_RADIUS_NM
+from app import port_radar
 
 try:
     import websocket
@@ -71,7 +72,6 @@ def _normalize_nav_status(value):
 AIS_URL = "wss://stream.aisstream.io/v0/stream"
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = Path(os.environ.get("AISSTREAM_DB", str(ROOT / "data" / "production" / "aisstream_live.sqlite3")))
-PORT_INDEX = ROOT / "data" / "production" / "world_port_index_clean.csv"
 
 PORT_COORDS = {
     "Newcastle": (-32.916667, 151.783333),
@@ -137,6 +137,9 @@ class AISStreamCollector:
         self.messages = 0
         self.positions = 0
         self.static_messages = 0
+        # Port Disruption Radar results are expensive (8 window scans) and change
+        # slowly, so they are cached briefly. key -> (monotonic_ts, payload)
+        self._radar_cache: dict[tuple, tuple[float, dict]] = {}
 
         # Production persistence: set AIS_DB_CLIENT=mysql and reuse the
         # existing FreightSight MYSQL_* environment variables. SQLite remains
@@ -563,6 +566,110 @@ class AISStreamCollector:
         cutoff = cutoff_dt.replace(tzinfo=None) if self.db_client == "mysql" else cutoff_dt.isoformat()
         return self._port_stats(port, cutoff)
 
+    # ------------------------------------------------------------------
+    # Port Disruption Radar
+    # ------------------------------------------------------------------
+    RADAR_CACHE_TTL_S = 120
+
+    def _bound(self, dt: datetime):
+        """A datetime as this DB's comparable timestamp value."""
+        return dt.replace(tzinfo=None) if self.db_client == "mysql" else dt.isoformat()
+
+    def _vessel_windows(self, start: datetime, end: datetime) -> dict[str, list[dict[str, Any]]]:
+        """Per-vessel aggregates for [start, end), for EVERY port, in one query.
+
+        One row per (port, vessel) so a 6-hour scan returns tens of rows per
+        port however many thousand position reports sit behind them. Returns
+        {port: [vessel aggregate dicts]} for port_radar.summarize().
+        """
+        rows = self._query_all("""
+            SELECT port_near, mmsi,
+                   COUNT(*) n,
+                   AVG(sog) avg_sog,
+                   MAX(sog) max_sog,
+                   AVG(port_distance_nm) avg_dist,
+                   AVG(CASE WHEN nav_status = 1 THEN 1.0 ELSE 0.0 END) anchor_share,
+                   AVG(CASE WHEN nav_status = 5 THEN 1.0 ELSE 0.0 END) moored_share,
+                   AVG(CASE WHEN nav_status IN (7, 8) THEN 1.0 ELSE 0.0 END) ignore_share
+            FROM ais_positions
+            WHERE received_at >= ? AND received_at < ?
+              AND port_near IS NOT NULL AND port_distance_nm <= ?
+            GROUP BY port_near, mmsi
+        """, (self._bound(start), self._bound(end), PORT_RADIUS_NM))
+        by_port: dict[str, list[dict[str, Any]]] = {}
+        for (port, mmsi, n, avg_sog, max_sog, avg_dist, anchor, moored, ignore) in rows:
+            f = lambda x: float(x) if x is not None else None
+            by_port.setdefault(port, []).append({
+                "mmsi": str(mmsi), "n": int(n or 0), "avg_sog": f(avg_sog), "max_sog": f(max_sog),
+                "avg_dist": f(avg_dist), "anchor_share": f(anchor) or 0.0,
+                "moored_share": f(moored) or 0.0, "ignore_share": f(ignore) or 0.0,
+            })
+        return by_port
+
+    def port_radar_all(self, window_hours: float = 6.0, baseline_days: int = 7, now: datetime | None = None) -> dict[str, Any]:
+        """Radar assessment for every tracked port.
+
+        "Now" is the last ``window_hours``. "Normal" is the same clock window
+        on each of the previous ``baseline_days`` days. A baseline window only
+        counts if the AIS feed was demonstrably alive then (table-wide message
+        volume): the collector runs inside ml-service, so any downtime shows up
+        as empty windows, and treating those as "no ships" would drag "normal"
+        down and make ordinary traffic look like congestion.
+        """
+        window_hours = max(1.0, min(24.0, float(window_hours)))
+        baseline_days = max(3, min(14, int(baseline_days)))
+        cache_key = (window_hours, baseline_days)
+        if now is None:
+            hit = self._radar_cache.get(cache_key)
+            if hit and time.monotonic() - hit[0] < self.RADAR_CACHE_TTL_S:
+                return hit[1]
+        now_dt = now or _utcnow()
+
+        span = timedelta(hours=window_hours)
+        now_by_port = self._vessel_windows(now_dt - span, now_dt)
+        feed_now = sum(v["n"] for vs in now_by_port.values() for v in vs)
+        feed_ok_now = feed_now >= port_radar.MIN_FEED_MESSAGES
+
+        baseline_windows: list[dict[str, list[dict[str, Any]]]] = []
+        for k in range(1, baseline_days + 1):
+            end = now_dt - timedelta(days=k)
+            by_port = self._vessel_windows(end - span, end)
+            if sum(v["n"] for vs in by_port.values() for v in vs) >= port_radar.MIN_FEED_MESSAGES:
+                baseline_windows.append(by_port)
+
+        ports = []
+        for port in PORT_COORDS:
+            now_summary = port_radar.summarize(now_by_port.get(port, []))
+            baselines = [port_radar.summarize(w.get(port, [])) for w in baseline_windows]
+            ports.append(port_radar.assess(
+                port, now_summary, baselines,
+                feed_ok=feed_ok_now, window_hours=window_hours, baseline_days=baseline_days,
+            ))
+        ports.sort(key=port_radar.severity_key)
+
+        payload = {
+            "generated_at": now_dt.isoformat(),
+            "window_hours": window_hours,
+            "baseline_days": baseline_days,
+            "baseline_windows_usable": len(baseline_windows),
+            "feed_active_now": feed_ok_now,
+            "db_client": self.db_client,
+            "data_source": "AISStream live AIS events persisted by FreightSight",
+            "ports": ports,
+        }
+        if now is None:
+            self._radar_cache[cache_key] = (time.monotonic(), payload)
+        return payload
+
+    def port_radar(self, port: str, window_hours: float = 6.0, baseline_days: int = 7, now: datetime | None = None) -> dict[str, Any]:
+        """One port's radar assessment (a slice of the all-port computation)."""
+        if port not in PORT_COORDS:
+            raise ValueError(f"Unknown AIS port: {port}")
+        full = self.port_radar_all(window_hours=window_hours, baseline_days=baseline_days, now=now)
+        radar = next(p for p in full["ports"] if p["port"] == port)
+        return {**radar, **{k: full[k] for k in (
+            "generated_at", "baseline_days", "feed_active_now", "db_client", "data_source")}}
+
     def route_features(self, origin: str, destination: str, lookback_hours: int = 24):
         if origin not in PORT_COORDS or destination not in PORT_COORDS:
             raise ValueError(f"Unknown AIS route ports: {origin} -> {destination}")
@@ -576,6 +683,83 @@ class AISStreamCollector:
             "destination": d,
             "route_congestion_index": round((o["congestion_index"] + d["congestion_index"]) / 2, 3),
             "source": "AISStream live AIS events persisted by FreightSight",
+        }
+
+    def recent_positions(self, lookback_hours: float = 6.0, port: str | None = None, limit: int = 500):
+        """Latest known position for every vessel seen in the lookback
+        window — one row per MMSI, not the full ping history. This powers
+        a live map (dots on ports/routes), whereas idle_vessels() answers a
+        narrower "which of these have been sitting still" question."""
+        if port is not None and port not in PORT_COORDS:
+            raise ValueError(f"Unknown AIS port: {port}")
+        lookback_hours = max(0.25, min(48.0, float(lookback_hours)))
+        limit = max(1, min(1000, int(limit)))
+        cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+        cutoff = cutoff_dt.replace(tzinfo=None) if self.db_client == "mysql" else cutoff_dt.isoformat()
+
+        where = ["received_at >= ?", "lat IS NOT NULL", "lon IS NOT NULL"]
+        params: list[Any] = [cutoff]
+        if port:
+            where.append("port_near = ?")
+            params.append(port)
+        where_sql = " AND ".join(where)
+
+        rows = self._query_all(f"""
+            SELECT p.received_at, p.mmsi, p.ship_name, p.lat, p.lon, p.sog, p.cog,
+                   p.heading, p.nav_status, p.port_near, p.port_distance_nm,
+                   COALESCE(p.ship_type, s.ship_type) AS effective_ship_type,
+                   s.destination
+            FROM ais_positions p
+            INNER JOIN (
+                SELECT mmsi, MAX(received_at) AS max_time
+                FROM ais_positions
+                WHERE {where_sql}
+                GROUP BY mmsi
+            ) latest ON latest.mmsi = p.mmsi AND latest.max_time = p.received_at
+            LEFT JOIN ais_static s ON s.mmsi = p.mmsi
+            ORDER BY p.received_at DESC
+            LIMIT ?
+        """, params + [limit])
+
+        vessels = []
+        for row in rows:
+            (received_at, mmsi, ship_name, lat, lon, sog, cog, heading, nav_status,
+             port_near, port_distance_nm, ship_type, destination) = row
+            if lat is None or lon is None:
+                continue
+            sog_kn = float(sog) if sog is not None else None
+            # Same 0.5kn threshold idle_vessels()'s "definition" documents —
+            # a quick visual status, not the full idle-duration detection
+            # idle_vessels() does (that needs several observations over time).
+            if sog_kn is not None and sog_kn <= 0.5:
+                status = "stopped"
+            elif sog_kn is not None and sog_kn < 3:
+                status = "slow"
+            else:
+                status = "underway"
+            vessels.append({
+                "mmsi": str(mmsi),
+                "ship_name": ship_name,
+                "ship_type": int(ship_type) if ship_type is not None else None,
+                "lat": float(lat), "lon": float(lon),
+                "sog_kn": sog_kn,
+                "cog": float(cog) if cog is not None else None,
+                "heading": float(heading) if heading is not None else None,
+                "nav_status": int(nav_status) if nav_status is not None else None,
+                "status": status,
+                "port_near": port_near,
+                "port_distance_nm": float(port_distance_nm) if port_distance_nm is not None else None,
+                "destination": destination,
+                "received_at": str(received_at),
+            })
+
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "lookback_hours": lookback_hours,
+            "port_filter": port,
+            "vessels": vessels,
+            "count": len(vessels),
+            "source": "AISStream PositionReport events persisted by FreightSight",
         }
 
     def idle_vessels(self, lookback_hours: int = 48, min_idle_hours: float = MIN_IDLE_HOURS,

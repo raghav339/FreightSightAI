@@ -12,6 +12,7 @@ const metaRouter = require("./routes/meta");
 const authRouter = require("./routes/auth");
 const analysisRouter = require("./routes/analysis");
 const pdfRouter = require("./routes/pdf");
+const decisionBriefRouter = require("./routes/decisionBrief");
 const aisRouter = require("./routes/ais");
 
 const app = express();
@@ -55,6 +56,7 @@ app.use("/api", historyRouter);
 app.use("/api", metaRouter);
 app.use("/api", analysisRouter);
 app.use("/api", pdfRouter);
+app.use("/api", decisionBriefRouter);
 app.use("/api", aisRouter);
 
 app.use((req, res) => {

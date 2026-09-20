@@ -1,17 +1,15 @@
 import json
-import os
 from datetime import date
 from pathlib import Path
-import joblib
-import numpy as np
 import pandas as pd
 from app import port_utils
+from app import brent
 from route_freight_model import RouteFreightModel
 try:
-    # Same optional-import pattern used in app/route_model.py: AIS is a
-    # live, best-effort enhancement. If aisstream isn't configured/running
-    # (no AISSTREAM_API_KEY, websocket-client missing, import error) the
-    # rest of ModelBundle must keep working exactly as before.
+    # AIS is a live, best-effort enhancement. If aisstream isn't
+    # configured/running (no AISSTREAM_API_KEY, websocket-client missing,
+    # import error) the rest of ModelBundle must keep working exactly as
+    # before.
     from app.ais_stream import collector as ais_collector
 except Exception:
     ais_collector = None
@@ -36,231 +34,228 @@ from app.decision_text import (
 
 MODELS_DIR = Path(__file__).resolve().parent / ".." / "models"
 
+# Two-threshold bucketing for the deterministic risk score below (see
+# _derive_risk). Chosen to land in roughly the same low/medium/high split
+# the old trained classifier's train-only tertiles used, but this is now a
+# plain, auditable rule instead of a fitted model.
+RISK_THRESHOLDS = (0.35, 0.6)
+
+# Same five factors/weights the project's risk_methodology always
+# documented (see models/metadata.json's old risk_weights), just no longer
+# fed into a RandomForest trained against a BDRY-derived label. Each factor
+# below is computed directly from the route-freight forecast itself.
+RISK_WEIGHTS = {
+    "volatility": 0.35,
+    "rate_shock": 0.20,
+    "trend_deviation": 0.15,
+    "port_congestion": 0.20,
+    "data_uncertainty": 0.10,
+}
+
+# Used instead of RISK_WEIGHTS while fresh Brent data is available (see
+# app/brent.py). "fuel_shock" takes 0.10 of the weight, 0.05 each from
+# volatility and rate_shock, so the weights still sum to 1.0. When Brent is
+# missing/stale the original RISK_WEIGHTS apply unchanged.
+RISK_WEIGHTS_WITH_FUEL = {
+    "volatility": 0.30,
+    "rate_shock": 0.15,
+    "trend_deviation": 0.15,
+    "port_congestion": 0.20,
+    "data_uncertainty": 0.10,
+    "fuel_shock": 0.10,
+}
+
+
 class ModelBundle:
+    """Decision engine for a single route+commodity+date forecast request.
+
+    HISTORY: this class used to wrap a RandomForest regressor + classifier
+    trained on a BDRY (Baltic Dry Index) market-proxy target
+    (forecast_model.joblib / risk_model.joblib / feature_encoder.joblib).
+    That pipeline has been removed entirely. The freight-rate level now
+    comes ONLY from RouteFreightModel (route_freight_model.py), trained on
+    synthetic (and, once available, verified) route freight-rate
+    observations. Risk is derived deterministically from that same
+    route-freight forecast (see _derive_risk) instead of a separately
+    trained classifier.
+
+    Practical consequence: a request for a route/commodity with no
+    route-freight coverage now raises ValueError instead of silently
+    falling back to a BDRY-derived number. Callers (app/main.py) turn that
+    into a 400 with an explanatory message.
+    """
+
     def __init__(self):
-        with open(MODELS_DIR / "metadata.json") as f: self.meta=json.load(f)
-        if self.meta.get("pipeline_version") != "real_monthly_v2":
-            raise RuntimeError("Current model artifacts are not from the real monthly pipeline. Run python train.py after adding the seven real datasets.")
-        self.reg=joblib.load(MODELS_DIR/"forecast_model.joblib")
-        self.clf=joblib.load(MODELS_DIR/"risk_model.joblib")
-        self.encoder=joblib.load(MODELS_DIR/"feature_encoder.joblib")
+        with open(MODELS_DIR / "metadata.json") as f:
+            self.meta = json.load(f)
+        # metadata.json is still used, but only for the static reference
+        # lists it also happens to carry (origins/destinations/routes/
+        # commodities/shipment_modes/vessel_types) — not for anything
+        # forecast-model-shaped. Those lists describe the network the app
+        # covers, not the (now-removed) BDRY pipeline.
+        self.route_freight = RouteFreightModel(MODELS_DIR, MODELS_DIR.parent / "data" / "production")
 
-        self.horizon_models = {1: self.reg}
-        # Route-level synthetic freight curve for the MVP. The model is
-        # explicitly provenance-tagged and only used when no verified
-        # production route observations exist. It does not replace the BDRY
-        # risk model; it supplies the route-specific freight-rate level.
-        try:
-            self.route_freight = RouteFreightModel(MODELS_DIR, MODELS_DIR.parent / "data" / "production")
-        except Exception:
-            self.route_freight = None
-        for h in self.meta.get("metrics", {}).get("horizons_available", [1]):
-            if h == 1:
-                continue
-            path = MODELS_DIR / f"forecast_model_h{h}.joblib"
-            if not path.exists():
-                raise RuntimeError(
-                    f"metadata.json declares horizon H+{h} available but {path.name} is missing. "
-                    "Re-run train.py to regenerate all horizon models together."
-                )
-            self.horizon_models[h] = joblib.load(path)
+    # ------------------------------------------------------------------
+    # Risk derivation (replaces the trained risk_model.joblib classifier)
+    # ------------------------------------------------------------------
+    def _port_congestion_score(self, origin_port, destination_port):
+        levels = {"low": 0.0, "medium": 0.5, "high": 1.0}
+        scores = []
+        for name in (origin_port, destination_port):
+            info = port_utils.get_port(name)
+            if info and info.get("typical_congestion") in levels:
+                scores.append(levels[info["typical_congestion"]])
+        return max(scores) if scores else 0.3  # unknown ports: mild default, never zero
 
-    def _resolve_lookup(self, destination_port, commodity):
-        """Deterministic fallback hierarchy for the destination+commodity
-        market-feature lookup. Never falls back to an arbitrary/unrelated
-        entry (no `next(iter(...))`) — every level is explicitly keyed to
-        something the request actually asked for, and the level used is
-        returned alongside the data so callers can be transparent about it.
-
-        Note on scope: this pipeline's lookup table is keyed by
-        destination+commodity only (see train.py) — it does not currently
-        hold per-origin observations, so there is no "exact_route" (origin+
-        destination+commodity) level to fall back from yet. That is a real
-        limitation of the current data, not something this function should
-        paper over; see README "Known limitations" for the honest statement.
-
-        Levels, in order:
-          1. destination_commodity — exact (destination, commodity) match.
-          2. commodity             — average across all destinations for
-                                      this commodity.
-          3. global_proxy          — average across the entire lookup table.
-        Raises RuntimeError if even the global proxy is unavailable (empty
-        lookup table), rather than silently returning nothing.
+    def _derive_risk(self, route_result, forecast_curve, pct, origin_port, destination_port):
+        """Deterministic low/medium/high risk label from the route-freight
+        forecast itself, plus static port-congestion data. Replaces the
+        BDRY-trained classifier with an auditable weighted score using the
+        same five factors this project's risk_methodology always named.
         """
-        table = self.meta["latest_lookup"]
+        h1 = forecast_curve[0] if forecast_curve else None
 
-        key = f"{destination_port}|{commodity}"
-        exact = table.get(key)
-        if exact is not None:
-            return dict(exact), "destination_commodity"
+        # volatility: ensemble spread (lower/upper bound) at H+1, relative
+        # to the predicted level.
+        volatility = 0.5
+        if h1 and h1.get("lower_bound") is not None and h1.get("upper_bound") is not None and h1.get("predicted_rate"):
+            width = abs(h1["upper_bound"] - h1["lower_bound"])
+            volatility = min(width / abs(h1["predicted_rate"]) / 0.5, 1.0) if h1["predicted_rate"] else 0.5
 
-        commodity_matches = [v for k, v in table.items() if k.endswith(f"|{commodity}")]
-        if commodity_matches:
-            averaged = {
-                feat: float(np.mean([v[feat] for v in commodity_matches]))
-                for feat in self.meta["numeric_features"]
-            }
-            return averaged, "commodity"
+        # rate_shock: magnitude of the H+1 move vs. last observed rate.
+        rate_shock = min(abs(pct) / 0.15, 1.0)
 
-        if table:
-            all_values = list(table.values())
-            averaged = {
-                feat: float(np.mean([v[feat] for v in all_values]))
-                for feat in self.meta["numeric_features"]
-            }
-            return averaged, "global_proxy"
+        # trend_deviation: how much the curve accelerates/reverses across
+        # horizons (H+3 move vs H+1 move) — a route trending consistently
+        # is lower risk than one whose direction flips or accelerates hard.
+        trend_deviation = 0.3
+        if len(forecast_curve) >= 2:
+            first_pct = forecast_curve[0].get("predicted_rate")
+            last_pct = forecast_curve[-1].get("predicted_rate")
+            if first_pct and last_pct and h1 and h1.get("predicted_rate"):
+                drift = abs(last_pct - first_pct) / abs(h1["predicted_rate"])
+                trend_deviation = min(drift / 0.2, 1.0)
 
-        raise RuntimeError(
-            f"No trained market data available for destination='{destination_port}', "
-            f"commodity='{commodity}', and no global proxy exists either (empty lookup table)."
+        port_congestion = self._port_congestion_score(origin_port, destination_port)
+
+        # data_uncertainty: synthetic MVP data is inherently less certain
+        # than verified observations; data_confidence further modulates it.
+        data_confidence = route_result.get("data_confidence", "low")
+        data_uncertainty = {"high": 0.1, "medium": 0.45, "low": 0.8}.get(data_confidence, 0.8)
+        if route_result.get("data_mode") == "synthetic_mvp":
+            data_uncertainty = max(data_uncertainty, 0.7)
+
+        # fuel_shock: size of the recent Brent move (either direction; a
+        # sharp swing is a cost-volatility signal). Read from the local cache;
+        # the factor drops out entirely if Brent data is missing or stale.
+        brent_signal = brent.fuel_shock()
+        if brent_signal["available"]:
+            fuel_shock = min(abs(brent_signal["pct_change_30d"]) / brent.SHOCK_CAP, 1.0)
+            weights = RISK_WEIGHTS_WITH_FUEL
+        else:
+            fuel_shock = None
+            weights = RISK_WEIGHTS
+
+        score = (
+            weights["volatility"] * volatility
+            + weights["rate_shock"] * rate_shock
+            + weights["trend_deviation"] * trend_deviation
+            + weights["port_congestion"] * port_congestion
+            + weights["data_uncertainty"] * data_uncertainty
+            + (weights["fuel_shock"] * fuel_shock if fuel_shock is not None else 0.0)
         )
+        low_t, high_t = RISK_THRESHOLDS
+        if score < low_t:
+            risk = "low"
+            confidence = 1.0 - (score / low_t) * 0.5
+        elif score < high_t:
+            risk = "medium"
+            confidence = 0.6
+        else:
+            risk = "high"
+            confidence = 0.5 + min((score - high_t) / (1.0 - high_t), 1.0) * 0.5
+        return risk, round(float(min(max(confidence, 0.0), 1.0)), 3), {
+            "volatility": round(volatility, 3),
+            "rate_shock": round(rate_shock, 3),
+            "trend_deviation": round(trend_deviation, 3),
+            "port_congestion": round(port_congestion, 3),
+            "data_uncertainty": round(data_uncertainty, 3),
+            "fuel_shock": round(fuel_shock, 3) if fuel_shock is not None else None,
+            "brent": (
+                {
+                    "pct_change_30d": round(brent_signal["pct_change_30d"], 4),
+                    "latest_usd_per_bbl": brent_signal["latest_usd_per_bbl"],
+                    "as_of": brent_signal["as_of"],
+                }
+                if fuel_shock is not None
+                else {"available": False, "reason": brent_signal["reason"]}
+            ),
+            "score": round(score, 3),
+            "thresholds": {"low_below": low_t, "high_at_or_above": high_t},
+        }
 
-    def _feature_row(self, req):
-        lookup, data_source_level = self._resolve_lookup(req.destination_port, req.commodity)
-        values={k:lookup[k] for k in self.meta["numeric_features"]}
-        values["month_num"]=req.shipment_date.month; values["quarter"]=(req.shipment_date.month-1)//3+1
-        values["trade_signal_lag1"]=float(lookup.get("trade_signal_lag1", 0.0))
-        values["trade_signal_yoy_growth"]=float(lookup.get("trade_signal_yoy_growth", 0.0))
-        values["has_trade_signal"]=float(lookup.get("has_trade_signal", 0.0))
-        # Request-specific physical/cargo fields remain decision-engine inputs; the rate model is trained on market/demand features.
-        cat=self.encoder.transform(pd.DataFrame([[req.destination_port,req.commodity]],columns=self.meta["categorical_features"]))
-        num=np.array([[values[n] for n in self.meta["numeric_features"]]],dtype=float)
-        X=np.concatenate([num,cat],axis=1)
-        return X, values, data_source_level, lookup
+    # ------------------------------------------------------------------
+    # Core forecast (route-freight only — no BDRY fallback)
+    # ------------------------------------------------------------------
+    def _route_forecast(self, origin_port, destination_port, commodity, shipment_date):
+        route_result = self.route_freight.predict(
+            origin_port, destination_port, shipment_date, commodity=commodity
+        ) if self.route_freight is not None else None
 
-    def _local_drivers(self, values, top_n=3):
-        """(3) Explainability — lightweight per-request 'top drivers'.
+        if route_result is None or not route_result.get("forecasts") or route_result.get("model_beats_baseline") is not True:
+            raise ValueError(
+                f"No synthetic route-freight forecast is available for {origin_port} -> {destination_port}"
+                + (f" ({commodity})" if commodity else "")
+                + ". This lane is not covered by the route-freight dataset, or its held-out "
+                "evaluation did not beat the naive-persistence baseline."
+            )
 
-        Not SHAP: for each numeric feature we combine (a) the model's global
-        importance for that feature with (b) how far this request's value
-        sits from the training-set mean (z-score), and rank by the product.
-        This is an honest proxy for "what's pushing this forecast away from
-        the average case", not an exact per-prediction attribution.
-        """
-        stats = self.meta.get("numeric_feature_stats", {})
-        importances = {d["feature"]: d["importance"] for d in self.meta.get("forecast_feature_importance", [])}
-        scored = []
-        for feat, val in values.items():
-            st = stats.get(feat)
-            if not st or not st.get("std"):
-                continue
-            z = (float(val) - st["mean"]) / st["std"]
-            weight = importances.get(feat, 0.0)
-            scored.append({
-                "feature": feat,
-                "value": round(float(val), 3),
-                "typical_value": round(st["mean"], 3),
-                "deviation_z": round(float(z), 2),
-                "global_importance": round(weight, 4),
-                "influence_score": round(abs(z) * weight, 4),
-                "direction": "above typical" if z > 0 else "below typical",
-            })
-        scored.sort(key=lambda s: s["influence_score"], reverse=True)
-        return scored[:top_n]
+        route_h1 = route_result["forecasts"][0]
+        prev = float(route_result["last_available_freight_usd_per_ton"])
+        forecast = float(route_h1["predicted_rate_usd_per_ton"])
+        pct = (forecast - prev) / prev if prev else 0.0
 
-    def _forecast_curve(self, X, prev, shipment_date, data_source_level):
-        """(Phase 4) Build the real multi-horizon forecast — one point per
-        directly-trained horizon model (H+1, H+2, H+3, ...), using the SAME
-        feature row X for every horizon (never a recursively-mutated
-        month/quarter feature with everything else frozen — see train.py
-        for why that anti-pattern is avoided).
+        forecast_type = "synthetic_route" if route_result.get("data_mode") == "synthetic_mvp" else "route_specific"
+        forecast_basis = "Synthetic route freight rate (MVP)" if forecast_type == "synthetic_route" else "Verified route freight"
+        forecast_source = (
+            "route_freight_observations.csv (synthetic MVP development dataset)"
+            if forecast_type == "synthetic_route"
+            else "Verified route freight observations"
+        )
+        def _curve_point_confidence(item: dict) -> float:
+            """Ensemble-spread-based confidence for one forecast point: a
+            tight lower/upper bound relative to the predicted level means
+            the per-tree ensemble agrees, so confidence is high; a wide
+            spread means the trees disagree, so confidence is low. This is
+            a heuristic derived from the same ensemble percentile spread
+            already exposed as lower_bound/upper_bound — not a statistical
+            confidence interval (see route_freight_model.py's own
+            interval_note)."""
+            rate = item.get("predicted_rate_usd_per_ton")
+            lo = item.get("lower_bound")
+            hi = item.get("upper_bound")
+            if not rate or lo is None or hi is None:
+                return 0.5
+            spread = abs(hi - lo) / abs(rate) if rate else 1.0
+            return round(float(min(max(1.0 - spread, 0.05), 0.99)), 3)
 
-        lower_bound/upper_bound: 10th/90th percentile of that horizon's 300
-        individual trees' predictions for this exact input row — a
-        standard non-parametric ensemble-uncertainty estimate, not a
-        fabricated interval. confidence is 1 - (bound width / |level|),
-        clamped to [0, 1]: a wide tree spread relative to the price level
-        means the forest itself is unsure, and that shows up directly here.
-        """
-        curve = []
-        for h in sorted(self.horizon_models.keys()):
-            model_h = self.horizon_models[h]
-            tree_preds = np.array([est.predict(X)[0] for est in model_h.estimators_])
-            level_preds = prev + tree_preds
-            point_delta = float(model_h.predict(X)[0])
-            point_level = prev + point_delta
-            lower = float(np.percentile(level_preds, 10))
-            upper = float(np.percentile(level_preds, 90))
-            width = max(upper - lower, 0.0)
-            conf = 1.0 - (width / abs(point_level)) if point_level else 0.0
-            conf = max(0.0, min(1.0, conf))
-            target_date = shipment_date + pd.DateOffset(months=h)
-            curve.append({
-                "horizon": f"H+{h}",
-                "date": target_date.strftime("%Y-%m-%d"),
-                "predicted_rate": round(point_level, 2),
-                "lower_bound": round(min(lower, upper), 2),
-                "upper_bound": round(max(lower, upper), 2),
-                "confidence": round(conf, 3),
-            })
-        return curve
+        forecast_curve = [
+            {
+                "horizon": f"H+{item['horizon_months']}",
+                "date": item["target_date"],
+                "predicted_rate": item["predicted_rate_usd_per_ton"],
+                "lower_bound": item.get("lower_bound"),
+                "upper_bound": item.get("upper_bound"),
+                "confidence": _curve_point_confidence(item),
+            }
+            for item in route_result["forecasts"]
+        ]
+        data_source_level = "synthetic_route" if forecast_type == "synthetic_route" else "route_specific"
+        data_confidence = route_result.get("data_confidence", "low")
 
-    def _data_confidence(self, data_source_level, forecast_curve):
-        """(Phase 2/3) high/medium/low, deterministic — never a guess.
-
-        Starts from data_source_level (how directly this destination+
-        commodity is represented in the training lookup — see
-        _resolve_lookup) and is capped downward if the model's own
-        ensemble uncertainty at H+1 is already wide, so a nominally
-        'exact match' lookup feeding an uncertain model doesn't get
-        reported as high confidence.
-        """
-        base = {"destination_commodity": "high", "commodity": "medium", "global_proxy": "low"}.get(data_source_level, "low")
-        # A route-specific destination/commodity lookup does NOT mean an
-        # observed route freight label exists. For the current BDRY-proxy
-        # architecture, cap the data-confidence label at medium so the UI
-        # cannot be read as claiming high-confidence route USD/t data.
-        if base == "high":
-            base = "medium"
-        if forecast_curve:
-            h1_conf = forecast_curve[0]["confidence"]
-            if h1_conf < 0.5 and base == "high":
-                base = "medium"
-            if h1_conf < 0.25:
-                base = "low"
-        return base
-
-    def _core_forecast(self, destination_port, commodity, shipment_date):
-        """Destination+commodity+date-only slice of the forecast pipeline.
-
-        PERF: everything computed here (feature row, BDRY-proxy forecast,
-        the H+1..H+N forecast curve, and the risk classification) depends
-        only on (destination_port, commodity, shipment_date) — NOT on
-        origin_port. Before this was split out, compare_origins() called
-        predict() once per origin (11 today), and predict() recomputed all
-        of this identically every time: the forecast curve alone runs every
-        individual tree of every horizon model against the same input row
-        (see _forecast_curve), so that was ~11x the RandomForest inference
-        work for a value that never changed across the loop. Profiling one
-        compare-origins request showed ~3.6s dominated almost entirely by
-        this redundant model inference. Hoisting it into a single call that
-        compare_origins() computes once and shares across all origins (see
-        predict()'s `core` parameter) removes that duplication without
-        changing what any single predict() call returns.
-        """
-        lookup, data_source_level = self._resolve_lookup(destination_port, commodity)
-        values = {k: lookup[k] for k in self.meta["numeric_features"]}
-        values["month_num"] = shipment_date.month
-        values["quarter"] = (shipment_date.month - 1) // 3 + 1
-        values["trade_signal_lag1"] = float(lookup.get("trade_signal_lag1", 0.0))
-        values["trade_signal_yoy_growth"] = float(lookup.get("trade_signal_yoy_growth", 0.0))
-        values["has_trade_signal"] = float(lookup.get("has_trade_signal", 0.0))
-        cat = self.encoder.transform(pd.DataFrame([[destination_port, commodity]], columns=self.meta["categorical_features"]))
-        num = np.array([[values[n] for n in self.meta["numeric_features"]]], dtype=float)
-        X = np.concatenate([num, cat], axis=1)
-
-        prev = float(lookup["bdry_lag1"])
-        predicted_delta = float(self.reg.predict(X)[0])
-        forecast = prev + predicted_delta
-        forecast_curve = self._forecast_curve(X, prev, shipment_date, data_source_level)
-        data_confidence = self._data_confidence(data_source_level, forecast_curve)
-
-        probs = self.clf.predict_proba(X)[0]
-        idx = int(np.argmax(probs))
-        predicted_class = int(self.clf.classes_[idx])
-        risk_classes = {0: "low", 1: "medium", 2: "high"}
-        risk = risk_classes[predicted_class]
-        confidence = float(probs[idx])
+        risk, risk_confidence, risk_factors = self._derive_risk(
+            route_result, forecast_curve, pct, origin_port, destination_port
+        )
 
         dest_port_info = port_utils.get_port(destination_port)
         port_depth = None
@@ -272,91 +267,27 @@ class ModelBundle:
             )
 
         return {
-            "X": X, "feature_values": values, "data_source_level": data_source_level, "lookup": lookup,
-            "prev": prev, "forecast": forecast, "forecast_curve": forecast_curve, "data_confidence": data_confidence,
-            # This pipeline's only rate signal is BDRY (a global dry-bulk
-            # market index), not a per-route freight observation — see
-            # ml-service/data/README and metadata.json target_transform.
-            # Stated plainly rather than left for the UI/PDF to guess at.
-            "forecast_type": "market_proxy",
-            "forecast_basis": "BDRY market proxy",
-            "forecast_source": "BDRY historical market series; AIS/PortWatch operational features",
-            "training_data_mode": self.meta.get("data_source_mode", "unknown"),
-            "risk": risk, "confidence": confidence,
+            "route_result": route_result,
+            "prev": prev, "forecast": forecast, "pct": pct,
+            "forecast_curve": forecast_curve,
+            "forecast_type": forecast_type, "forecast_basis": forecast_basis, "forecast_source": forecast_source,
+            "training_data_mode": route_result.get("data_mode", "unknown"),
+            "data_source_level": data_source_level, "data_confidence": data_confidence,
+            "risk": risk, "confidence": risk_confidence, "risk_factors": risk_factors,
             "dest_port_info": dest_port_info, "port_depth": port_depth,
         }
 
     def predict(self, req, core=None):
-        # `core` lets a caller that already computed the destination+
-        # commodity+date-only part (see _core_forecast) share it instead of
-        # having predict() redo that work — used by compare_origins() to
-        # avoid recomputing the same model inference once per origin.
-        if core is None:
-            core = self._core_forecast(req.destination_port, req.commodity, req.shipment_date)
-        X = core["X"]; feature_values = core["feature_values"]; data_source_level = core["data_source_level"]; lookup = core["lookup"]
-        prev = core["prev"]; forecast = core["forecast"]; forecast_curve = core["forecast_curve"]; data_confidence = core["data_confidence"]
+        core = core or self._route_forecast(req.origin_port, req.destination_port, req.commodity, req.shipment_date)
+        prev = core["prev"]; forecast = core["forecast"]; pct = core["pct"]
+        forecast_curve = core["forecast_curve"]
         forecast_type = core["forecast_type"]; forecast_basis = core["forecast_basis"]; forecast_source = core["forecast_source"]
         training_data_mode = core["training_data_mode"]
-        risk = core["risk"]; confidence = core["confidence"]
+        data_source_level = core["data_source_level"]; data_confidence = core["data_confidence"]
+        risk = core["risk"]; confidence = core["confidence"]; risk_factors = core["risk_factors"]
         dest_port_info = core["dest_port_info"]; port_depth = core["port_depth"]
-        route_freight_result = None
-        if self.route_freight is not None:
-            route_freight_result = self.route_freight.predict(
-                req.origin_port, req.destination_port, req.shipment_date, commodity=req.commodity
-            )
-        
-        route_model_beats_baseline = route_freight_result.get("model_beats_baseline") if route_freight_result else None
-        use_route_freight = bool(route_freight_result and route_freight_result.get("forecasts"))
-        route_model_fallback_note = None
-        if use_route_freight and route_model_beats_baseline is not True:
-            use_route_freight = False
-            route_model_fallback_note = (
-                f"Route-specific model for {req.origin_port}-{req.destination_port} did not "
-                "beat the naive-persistence baseline on held-out data (or has no recorded "
-                "baseline comparison); falling back to the BDRY market-proxy forecast for "
-                "this request rather than serving an unverified route forecast."
-            )
-        if use_route_freight:
-            # Use the synthetic route-rate forecast as the freight-rate target
-            # while keeping the existing BDRY-based risk classifier intact.
-            route_h1 = route_freight_result["forecasts"][0]
-            prev = float(route_freight_result["last_available_freight_usd_per_ton"])
-            forecast = float(route_h1["predicted_rate_usd_per_ton"])
-            pct = (forecast - prev) / prev if prev else 0.0
-            forecast_type = "synthetic_route" if route_freight_result.get("data_mode") == "synthetic_mvp" else "route_specific"
-            forecast_basis = "Synthetic route freight rate (MVP)" if forecast_type == "synthetic_route" else "Verified route freight"
-            forecast_source = "synthetic_route_freight_rates.csv (MVP development dataset)" if forecast_type == "synthetic_route" else "Verified route freight observations"
-            training_data_mode = route_freight_result.get("data_mode", training_data_mode)
-            # Convert the route model curve to the unified frontend contract.
-            forecast_curve = [
-                {
-                    "horizon": f"H+{item['horizon_months']}",
-                    "date": item["target_date"],
-                    "predicted_rate": item["predicted_rate_usd_per_ton"],
-                    "lower_bound": item.get("lower_bound"),
-                    "upper_bound": item.get("upper_bound"),
-                    "confidence": None,
-                }
-                for item in route_freight_result["forecasts"]
-            ]
-            data_source_level = "synthetic_route" if forecast_type == "synthetic_route" else "route_specific"
-            data_confidence = "low" if forecast_type == "synthetic_route" else route_freight_result.get("data_confidence", "medium")
-        # risk/confidence come from `core` above — the BDRY-based risk
-        # classifier runs on the same X regardless of the route-freight
-        # override, so it's computed once in _core_forecast, not per call.
+        route_result = core["route_result"]
 
-        # Reuse the SAME resolved lookup (and its data_source_level) that
-        # built the feature row above, instead of re-querying independently.
-        # Previously this line had its own fallback — `next(iter(...))` —
-        # which on a miss would silently hand back an ARBITRARY unrelated
-        # destination/commodity's data. Removed: the fallback hierarchy in
-        # _resolve_lookup() is now the single source of truth for both the
-        # feature row and this "previous rate" figure, so they can never
-        # disagree about which data they're using.
-        pct=(forecast-prev)/prev if prev else 0
-
-        # dest_port_info/port_depth come from `core` above (destination-only,
-        # unaffected by origin) — see _core_forecast.
         origin_port_info = port_utils.get_port(req.origin_port)
 
         feasible_candidates, rejected_candidates = port_utils.feasible_vessels_both_ports(
@@ -387,47 +318,37 @@ class ModelBundle:
                 vessel = requested_vessel
                 vessel_status = "REQUESTED_VESSEL_FEASIBLE"
             else:
-                
                 rej = next((r for r in rejected_candidates if r["vessel_class"] == requested_vessel), None)
                 vessel_rejection_reason = (
                     rej["rejection_reason"] if rej
-                    else build_not_recognized_vessel( vessel=requested_vessel)
+                    else build_not_recognized_vessel(vessel=requested_vessel)
                 )
                 if feasible_candidates:
                     vessel = recommendation["recommended_vessel"]
                     vessel_status = "REQUESTED_VESSEL_NOT_FEASIBLE_USING_RECOMMENDED"
                 else:
-                    vessel = recommendation["recommended_vessel"]  # informational only — see vessel_status
+                    vessel = recommendation["recommended_vessel"]
                     vessel_status = "NO_FEASIBLE_VESSEL"
         else:
             vessel = recommendation["recommended_vessel"]
             vessel_status = "RECOMMENDED_VESSEL" if feasible_candidates else "NO_FEASIBLE_VESSEL"
 
         note = recommendation["explanation"]
-        # Make the vessel decision auditable: show the physical reason for the
-        # selected class and surface the first rejected alternatives.
         recommended_vessel_reason = note
         if vessel_status == "REQUESTED_VESSEL_NOT_FEASIBLE_USING_RECOMMENDED" and vessel_rejection_reason:
-            recommended_vessel_reason = build_requested_rejected( vessel=requested_vessel, reason=vessel_rejection_reason,
-                selected=vessel, note=note,
+            recommended_vessel_reason = build_requested_rejected(
+                vessel=requested_vessel, reason=vessel_rejection_reason, selected=vessel, note=note,
             )
         elif feasible_candidates:
             dims = []
             spec = next((c for c in feasible_candidates if c["vessel_class"] == vessel), feasible_candidates[0])
             if spec.get("typical_draft") is not None and dest_port_info and dest_port_info.get("max_draft_m") is not None:
-                dims.append(build_draft_check_item( draft=spec["typical_draft"], limit=dest_port_info["max_draft_m"]
-                ))
+                dims.append(build_draft_check_item(draft=spec["typical_draft"], limit=dest_port_info["max_draft_m"]))
             if spec.get("typical_length") is not None and origin_port_info and origin_port_info.get("max_loa_m") is not None:
-                dims.append(build_loa_check_item( loa=spec["typical_length"], limit=origin_port_info["max_loa_m"]
-                ))
+                dims.append(build_loa_check_item(loa=spec["typical_length"], limit=origin_port_info["max_loa_m"]))
             if dims:
-                recommended_vessel_reason = build_key_feasibility_checks( note=note, checks="; ".join(dims)
-                )
+                recommended_vessel_reason = build_key_feasibility_checks(note=note, checks="; ".join(dims))
 
-        # Build detailed rejected-vessel reasons for the UI. The feasibility
-        # engine intentionally keeps its raw reason for auditability; the UI
-        # should not expose that English-only internal string when another
-        # The decision engine is English-only.
         rejected_reasons = []
         for entry in rejected_candidates:
             item = dict(entry)
@@ -437,7 +358,8 @@ class ModelBundle:
             limit = None
             if float(entry.get("typical_dwt", 0) or 0) < float(req.cargo_weight_tons):
                 kind = "cargo"
-                item["rejection_reason"] = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), cargo=req.cargo_weight_tons,
+                item["rejection_reason"] = build_rejection_reason(
+                    kind=kind, vessel=entry.get("vessel_class"), cargo=req.cargo_weight_tons,
                     dwt=float(entry.get("typical_dwt", 0) or 0)
                 )
             else:
@@ -445,9 +367,7 @@ class ModelBundle:
                     ("origin port", req.origin_port, origin_port_info),
                     ("destination port", req.destination_port, dest_port_info),
                 ):
-                    ok, reason = port_utils.check_vessel_port_compatibility(
-                        entry.get("vessel_class"), info, label=label
-                    )
+                    ok, reason = port_utils.check_vessel_port_compatibility(entry.get("vessel_class"), info, label=label)
                     if ok:
                         continue
                     port_name = port_name_candidate
@@ -471,19 +391,13 @@ class ModelBundle:
                     elif "no infrastructure data" in low:
                         kind = "unknown"
                     break
-                item["rejection_reason"] = build_rejection_reason( kind=kind, vessel=entry.get("vessel_class"), port=port_name, value=value, limit=limit
-                )
+                item["rejection_reason"] = build_rejection_reason(kind=kind, vessel=entry.get("vessel_class"), port=port_name, value=value, limit=limit)
             rejected_reasons.append(item)
 
-        turnaround=port_utils.port_turnaround_days(req.destination_port,req.cargo_weight_tons,delay_days=req.delay_days or 0)
-        congestion=port_utils.congestion_warning(req.origin_port,req.destination_port)
+        turnaround = port_utils.port_turnaround_days(req.destination_port, req.cargo_weight_tons, delay_days=req.delay_days or 0)
+        congestion = port_utils.congestion_warning(req.origin_port, req.destination_port)
 
-        # Sea-transit estimate: prefers the request's distance_km (a real,
-        # request-specific input the static table can't know) over the
-        # indicative origin/destination distance table.
-        transit_days = port_utils.estimate_transit_days(
-            req.origin_port, req.destination_port, distance_km_override=req.distance_km
-        )
+        transit_days = port_utils.estimate_transit_days(req.origin_port, req.destination_port, distance_km_override=req.distance_km)
         transit_source = (
             "user_provided" if (req.distance_km and req.distance_km > 0)
             else ("route_table" if transit_days is not None else "unavailable")
@@ -494,16 +408,10 @@ class ModelBundle:
             distance_km=req.distance_km, speed_knots=port_utils.DEFAULT_SERVICE_SPEED_KNOTS,
         )
 
-        # Stowage-factor sanity check: only meaningful when a cargo volume
-        # was actually supplied. Flags whether cubic capacity or deadweight
-        # is the more likely binding constraint on vessel choice.
         stowage_factor_value = port_utils.stowage_factor(req.cargo_weight_tons, req.cargo_volume_cbm)
         stowage_note = build_stowage_note(factor=stowage_factor_value) if stowage_factor_value is not None else None
 
-        direction_key="rise" if pct>0.03 else "fall" if pct<-0.03 else "flat"
-        # Keep the technical port feasibility note in English only when it is
-        # supplied by the static port database; the decision guidance itself
-        # is localized below.
+        direction_key = "rise" if pct > 0.03 else "fall" if pct < -0.03 else "flat"
         summary, window, vessel_note, idle = build_prediction_text(
             commodity=req.commodity, destination=req.destination_port,
             forecast=forecast, risk=risk, direction=direction_key, note=note,
@@ -511,70 +419,63 @@ class ModelBundle:
             delay_days=req.delay_days or 0,
         )
         duration_note = f" over {req.contract_duration_months:.0f} months" if req.contract_duration_months else ""
-        strategy=build_contract_text( pct_move=pct, risk=risk, duration_note=duration_note,
-                                   total_program_tons=req.total_program_tons, cargo_weight_tons=req.cargo_weight_tons)
-        # Shipment-mode framing (spot voyage vs. charter/COA) — genuinely
-        # changes how the strategy text is presented, not just stored.
-        strategy = strategy + " " + build_mode_note(mode=req.shipment_mode)
-        trend=(
-            [{"label":"route lag 3m","value":round(float(route_freight_result["forecasts"][0]["predicted_rate_usd_per_ton"]),2)},
-             {"label":"route last available","value":round(prev,2)},
-             {"label":"route forecast","value":round(forecast,2)}]
-            if use_route_freight
-            else [{"label":"BDRY lag 3m","value":round(float(lookup["bdry_lag3"]),2)},{"label":"BDRY lag 2m","value":round(float(lookup["bdry_lag2"]),2)},{"label":"last known","value":round(prev,2)},{"label":"forecast","value":round(forecast,2)}]
+        strategy = build_contract_text(
+            pct_move=pct, risk=risk, duration_note=duration_note,
+            total_program_tons=req.total_program_tons, cargo_weight_tons=req.cargo_weight_tons
         )
-        return {"route":f"{req.origin_port}-{req.destination_port}","predicted_freight_rate_usd_per_ton":round(forecast,2),"risk_label":risk,"risk_confidence":round(confidence,3),"recommended_vessel_type":vessel,"recommended_charter_window":window,"summary":summary,"trend_points":trend,"feasible_vessel_types":feasible,"vessel_constraint_note":vessel_note,"origin_port_info":self._port_info(req.origin_port),"destination_port_info":self._port_info(req.destination_port),"port_turnaround_days":turnaround,"idle_management_advice":idle,"congestion_warning":build_congestion_text(congestion),"contracting_strategy":strategy,"feature_importance":self.meta.get("forecast_feature_importance",[])[:5],"top_drivers":self._local_drivers(feature_values),"data_source_level":data_source_level,"vessel_status":vessel_status,"vessel_rejection_reason":vessel_rejection_reason,"rejected_vessel_types":rejected_reasons,"forecast_curve":forecast_curve,"forecast_type":forecast_type,"data_confidence":data_confidence,"training_data_mode":training_data_mode,
-        "forecast_basis":forecast_basis,
-        "forecast_source":forecast_source,
-        "route_model_available": bool(route_freight_result and route_freight_result.get("forecasts")),
-        "route_model_beats_baseline": route_model_beats_baseline,
-        "route_model_fallback_note": route_model_fallback_note,
-        "latest_feature_date":self.meta.get("training_run",{}).get("training_period",{}).get("end") or self.meta.get("training_run",{}).get("test_period",{}).get("end"),
-        "risk_reliability":"low for high-risk class; medium overall" if self.meta.get("metrics",{}).get("risk_walk_forward_cv",{}).get("status") == "ok" else "medium",
-        "recommended_vessel_reason":recommended_vessel_reason,
-        "port_data_warning": build_port_data_warning() if (origin_port_info or {}).get("data_status") or (dest_port_info or {}).get("data_status") else None,
-        "estimated_transit_days": transit_days,
-        "transit_distance_source": transit_source,
-        "transit_note": transit_note,
-        "stowage_factor_cbm_per_ton": stowage_factor_value,
-        "stowage_note": stowage_note}
+        strategy = strategy + " " + build_mode_note(mode=req.shipment_mode)
+
+        trend = [
+            {"label": "route lag 3m", "value": round(float(route_result["forecasts"][0]["predicted_rate_usd_per_ton"]), 2)},
+            {"label": "route last available", "value": round(prev, 2)},
+            {"label": "route forecast", "value": round(forecast, 2)},
+        ]
+
+        return {
+            "route": f"{req.origin_port}-{req.destination_port}",
+            "predicted_freight_rate_usd_per_ton": round(forecast, 2),
+            "risk_label": risk, "risk_confidence": round(confidence, 3), "risk_factors": risk_factors,
+            "recommended_vessel_type": vessel, "recommended_charter_window": window,
+            "summary": summary, "trend_points": trend,
+            "feasible_vessel_types": feasible, "vessel_constraint_note": vessel_note,
+            "origin_port_info": self._port_info(req.origin_port), "destination_port_info": self._port_info(req.destination_port),
+            "port_turnaround_days": turnaround, "idle_management_advice": idle,
+            "congestion_warning": build_congestion_text(congestion), "contracting_strategy": strategy,
+            "feature_importance": [], "top_drivers": [],
+            "data_source_level": data_source_level, "vessel_status": vessel_status,
+            "vessel_rejection_reason": vessel_rejection_reason, "rejected_vessel_types": rejected_reasons,
+            "forecast_curve": forecast_curve, "forecast_type": forecast_type, "data_confidence": data_confidence,
+            "training_data_mode": training_data_mode,
+            "forecast_basis": forecast_basis, "forecast_source": forecast_source,
+            "route_model_available": True,
+            "route_model_beats_baseline": route_result.get("model_beats_baseline"),
+            "route_model_fallback_note": None,
+            "latest_feature_date": route_result["forecasts"][0].get("feature_source_date"),
+            "risk_reliability": "heuristic (rule-based, not a trained classifier) — see risk_factors",
+            "recommended_vessel_reason": recommended_vessel_reason,
+            "port_data_warning": build_port_data_warning() if (origin_port_info or {}).get("data_status") or (dest_port_info or {}).get("data_status") else None,
+            "estimated_transit_days": transit_days,
+            "transit_distance_source": transit_source,
+            "transit_note": transit_note,
+            "stowage_factor_cbm_per_ton": stowage_factor_value,
+            "stowage_note": stowage_note,
+        }
 
     def compare_origins(self, req):
-        """(2) Rank every known loading port for the same cargo/destination/
-        date. The rate/risk model is destination+commodity driven (a global
-        BDRY-based market signal), so the forecast rate is the same across
-        origins by design — what genuinely differs per origin is covered
-        here: vessel feasibility at BOTH ends, load-port congestion, and
-        estimated transit time.
+        """Rank every known loading port for the same cargo/destination/date.
 
-        PERF: this used to run all N origins (11 today) fully sequentially —
-        one model .predict() call plus two fresh sqlite connections/queries
-        (origin AND the *same* destination, recomputed every single time)
-        per origin. On a slow/free-tier CPU that easily adds up to well
-        past the backend's per-request timeout even when ml-service is
-        fully warm, which then LOOKS like a cold start (the backend retries
-        and the frontend shows the generic "waking up" banner) when the
-        real cost is this fan-out. Fixed three ways:
-          1. The destination's AIS stats don't change per origin — fetch
-             them once, not N times.
-          2. Each origin's (predict + AIS-lookup) work is independent, so
-             run the origins concurrently instead of one at a time.
-          3. The model inference itself (forecast, forecast curve, risk
-             classification) depends only on destination+commodity+date —
-             never on origin — so it's computed ONCE via _core_forecast()
-             and shared across every origin's predict() call, instead of
-             re-running the full RandomForest ensemble (including the
-             per-tree forecast-curve loop) 11 times over for an identical
-             result. Profiling showed this redundant inference was the
-             actual bottleneck, not the sqlite/AIS I/O concurrency (2)
-             already addressed — see _core_forecast()'s docstring.
+        HISTORY: this used to share ONE destination-only BDRY forecast
+        across every origin, because the old BDRY pipeline's rate/risk
+        model was destination+commodity driven and origin-invariant by
+        construction. Route-freight forecasts are genuinely per-lane
+        (origin AND destination), so that sharing no longer applies — each
+        origin now gets its own route-freight prediction, and an origin
+        with no route-freight coverage for this destination/commodity
+        simply shows up in `errors` instead of a fabricated shared rate.
         """
         from app.schemas import ForecastRequest
         import concurrent.futures
         origins = self.meta.get("origins", [])
-        core = self._core_forecast(req.destination_port, req.commodity, req.shipment_date)
-
-        ais_live = ais_collector is not None and ais_collector.enabled
 
         def build_row(origin):
             try:
@@ -587,55 +488,36 @@ class ModelBundle:
                     vessel_type=req.vessel_type,
                     contract_duration_months=req.contract_duration_months,
                     total_program_tons=req.total_program_tons,
-                    # Decision summaries are generated in English only.
-                    # per-origin comparison summary came back in English
-                    # regardless of the caller context.
                 )
-                pred = self.predict(single, core=core)
+                pred = self.predict(single)
             except Exception as exc:
                 return ("error", {"origin_port": origin, "error": str(exc)})
 
             origin_info = port_utils.get_port(origin)
             if origin_info is None:
-                
-                return ("error", {
-                    "origin_port": origin,
-                    "error": "No port infrastructure data available for this origin.",
-                })
+                return ("error", {"origin_port": origin, "error": "No port infrastructure data available for this origin."})
             origin_port_ok = None
             if pred.get("recommended_vessel_type"):
                 origin_port_ok = port_utils.vessel_fits_port(pred["recommended_vessel_type"], origin_info)
             distance_nm = port_utils.get_distance_nm(origin, req.destination_port)
             transit_days = port_utils.estimate_transit_days(origin, req.destination_port)
             total_voyage_days = (
-                round(transit_days + pred["port_turnaround_days"], 1)
-                if transit_days is not None else None
+                round(transit_days + pred["port_turnaround_days"], 1) if transit_days is not None else None
             )
 
-            
             ais_congestion = {
-                "available": False,
-                "congestion_index": None,
-                "unique_vessels": None,
-                "avg_sog_kn": None,
-                "lookback_hours": None,
-                "source": None,
+                "available": False, "congestion_index": None, "unique_vessels": None,
+                "avg_sog_kn": None, "lookback_hours": None, "source": None,
             }
-            if ais_live:
+            if ais_collector is not None and ais_collector.enabled:
                 try:
                     o = ais_collector.port_congestion(origin, lookback_hours=24)
                     ais_congestion = {
-                        "available": True,
-                        "congestion_index": o["congestion_index"],
-                        "unique_vessels": o["unique_vessels"],
-                        "avg_sog_kn": o["avg_sog_kn"],
-                        "lookback_hours": 24,
-                        "source": "AISStream live AIS feed (this origin only, last 24h)",
+                        "available": True, "congestion_index": o["congestion_index"],
+                        "unique_vessels": o["unique_vessels"], "avg_sog_kn": o["avg_sog_kn"],
+                        "lookback_hours": 24, "source": "AISStream live AIS feed (this origin only, last 24h)",
                     }
                 except Exception:
-                    # Unknown port for AIS, feed error, etc. — keep the
-                    # "available": False default and move on; the static
-                    # typical_congestion rating below is unaffected.
                     pass
 
             return ("ok", {
@@ -652,19 +534,29 @@ class ModelBundle:
                 "estimated_transit_days": transit_days,
                 "port_turnaround_days": pred["port_turnaround_days"],
                 "total_voyage_days": total_voyage_days,
-                "feasible": bool(origin_port_ok) if origin_port_ok is not None else None,
+                # `feasible` reflects full both-port vessel feasibility (origin
+                # AND destination), taken from predict()'s vessel_status — not
+                # just whether the recommended vessel fits the origin port.
+                # An origin whose port can handle the recommended vessel but
+                # whose destination can't (vessel_status == NO_FEASIBLE_VESSEL)
+                # is correctly reported as infeasible here, so it sorts and
+                # displays as infeasible instead of only being caught
+                # downstream via vessel_status/feasible_vessel_types.
+                "feasible": pred.get("vessel_status") != "NO_FEASIBLE_VESSEL",
+                "vessel_status": pred.get("vessel_status"),
+                "feasible_vessel_types": pred.get("feasible_vessel_types", []),
             })
 
         results, errors = [], []
-        # I/O (sqlite) releases the GIL and RandomForest.predict spends most
-        # of its time inside numpy/BLAS, which also releases it — so a
-        # thread pool gives real wall-clock overlap here even though this
-        # is CPython. Bounded at 6 so this doesn't itself become a new
-        # source of CPU contention on a small Render instance.
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(origins) or 1)) as pool:
             for kind, row in pool.map(build_row, origins):
                 (results if kind == "ok" else errors).append(row)
 
+        # Ranked feasible-first, then by ascending total voyage days, then by
+        # ascending freight rate. Congestion (origin_port_congestion /
+        # ais_congestion) is returned on every row and shown in the UI, but
+        # it is a displayed signal, not a ranking key — it doesn't affect
+        # sort order.
         results.sort(key=lambda r: (
             0 if r["feasible"] else 1,
             r["total_voyage_days"] if r["total_voyage_days"] is not None else float("inf"),
@@ -681,81 +573,15 @@ class ModelBundle:
             "errors": errors,
         }
 
-    def _idle_market_predictions(self, destination_port, commodities, shipment_date):
-        """Batch the BDRY/risk model work used by idle-alternatives.
-
-        The normal ``predict()`` endpoint intentionally performs the complete
-        decision-support pipeline (forecast curve, route-rate model, vessel
-        feasibility, explainability, and decision text). Re-running that
-        whole pipeline once per idle-vessel candidate is unnecessarily costly.
-        This helper performs only the two model predictions actually needed by
-        idle-alternatives: freight-rate proxy + risk classification.
-
-        IMPORTANT: this preserves the same deterministic lookup hierarchy and
-        the same delta-vs-last-known target reconstruction used by ``predict``.
-        It merely batches the independent rows into one reg/classifier call.
-        """
-        rows = []
-        lookup_by_commodity = {}
-        for commodity in commodities:
-            lookup, _level = self._resolve_lookup(destination_port, commodity)
-            lookup_by_commodity[commodity] = lookup
-            values = {k: lookup[k] for k in self.meta["numeric_features"]}
-            values["month_num"] = shipment_date.month
-            values["quarter"] = (shipment_date.month - 1) // 3 + 1
-            values["trade_signal_lag1"] = float(lookup.get("trade_signal_lag1", 0.0))
-            values["trade_signal_yoy_growth"] = float(lookup.get("trade_signal_yoy_growth", 0.0))
-            values["has_trade_signal"] = float(lookup.get("has_trade_signal", 0.0))
-            row = {n: values[n] for n in self.meta["numeric_features"]}
-            row["port"] = destination_port
-            row["commodity"] = commodity
-            rows.append(row)
-
-        if not rows:
-            return {}
-
-        frame = pd.DataFrame(rows)
-        cat = self.encoder.transform(frame[["port", "commodity"]])
-        num = frame[self.meta["numeric_features"]].to_numpy(dtype=float)
-        X = np.concatenate([num, cat], axis=1)
-
-        deltas = np.asarray(self.reg.predict(X), dtype=float)
-        probabilities = self.clf.predict_proba(X)
-        classes = list(self.clf.classes_)
-        risk_classes = {0: "low", 1: "medium", 2: "high"}
-
-        out = {}
-        for i, commodity in enumerate(commodities):
-            lookup = lookup_by_commodity[commodity]
-            prev = float(lookup["bdry_lag1"])
-            forecast = prev + float(deltas[i])
-            idx = int(np.argmax(probabilities[i]))
-            predicted_class = int(classes[idx])
-            out[commodity] = {
-                "forecast": float(forecast),
-                "risk": risk_classes[predicted_class],
-                "risk_confidence": float(probabilities[i][idx]),
-                "prev": prev,
-            }
-        return out
-
     def idle_alternatives(self, req):
         """Rank next-best loading ports for an idle vessel.
 
-        PERFORMANCE FIX:
-        ``predict()`` is the full forecast/decision pipeline and is too
-        expensive to run once for every ``origin x commodity`` candidate on a
-        small Render CPU. The old implementation could execute up to 30 full
-        pipelines for an ``Any`` commodity request. This version:
-
-        1. batches the BDRY forecast + risk model across commodities;
-        2. uses only the lightweight route-freight model when a route-specific
-           lane is available and its held-out baseline guardrail passes;
-        3. performs static vessel-feasibility checks directly instead of
-           recalculating a full forecast for each candidate;
-        4. reuses ballast distance/time already calculated once per origin.
-
-        The returned API contract is unchanged.
+        HISTORY: this used to batch a BDRY forecast + risk-classifier call
+        across commodities, then optionally overlay a route-freight number
+        when the held-out guardrail passed. The BDRY batch is gone — every
+        candidate's rate now comes directly from route_freight.predict();
+        candidates with no route-freight coverage for that lane/commodity
+        are skipped and reported in `errors` instead of falling back.
         """
         origins = [
             origin for origin in self.meta.get("origins", [])
@@ -766,10 +592,8 @@ class ModelBundle:
         vessel_type = req.vessel_type
         shipment_date = date.today()
 
-        # Static destination data is identical for every candidate.
         dest_info = port_utils.get_port(req.current_port)
 
-        # Pre-filter origins and compute ballast once per origin.
         jobs = []
         for origin in origins:
             origin_info = port_utils.get_port(origin)
@@ -781,81 +605,33 @@ class ModelBundle:
             ballast_days = port_utils.estimate_transit_days(origin, req.current_port)
             jobs.append((origin, origin_info, distance_nm, ballast_days))
 
-        # One batched BDRY/risk prediction for the complete commodity set.
-        market_predictions = self._idle_market_predictions(
-            req.current_port, commodities, shipment_date
-        )
-
         candidates = []
         errors = []
         for origin, origin_info, distance_nm, ballast_days in jobs:
             for commodity in commodities:
-                base = market_predictions.get(commodity)
-                if base is None:
-                    errors.append({
-                        "origin_port": origin,
-                        "commodity": commodity,
-                        "error": "No market-proxy prediction available for this commodity.",
-                    })
+                try:
+                    core = self._route_forecast(origin, req.current_port, commodity, shipment_date)
+                except ValueError as exc:
+                    errors.append({"origin_port": origin, "commodity": commodity, "error": str(exc)})
                     continue
 
-                rate = base["forecast"]
-                risk = base["risk"]
-
-                # Preserve the project's route-specific guardrail. The route
-                # model is allowed to replace the market-proxy level only when
-                # its H+1 held-out evaluation beat naive persistence. Do this
-                # before vessel recommendation so the recommendation sees the
-                # same final rate that the old full-predict path used.
-                if self.route_freight is not None:
-                    try:
-                        route_result = self.route_freight.predict(
-                            origin,
-                            req.current_port,
-                            shipment_date,
-                            commodity=commodity,
-                        )
-                    except Exception as exc:
-                        route_result = None
-                        errors.append({
-                            "origin_port": origin,
-                            "commodity": commodity,
-                            "error": f"Route freight fallback unavailable: {exc}",
-                        })
-                    if (
-                        route_result
-                        and route_result.get("forecasts")
-                        and route_result.get("model_beats_baseline") is True
-                    ):
-                        rate = float(route_result["forecasts"][0]["predicted_rate_usd_per_ton"])
+                rate = core["forecast"]
+                risk = core["risk"]
 
                 recommended_vessel = None
                 try:
-                    feasible_candidates, _rejected = port_utils.feasible_vessels_both_ports(
-                        cargo_weight, origin_info, dest_info
-                    )
+                    feasible_candidates, _rejected = port_utils.feasible_vessels_both_ports(cargo_weight, origin_info, dest_info)
                     if feasible_candidates:
                         recommendation = port_utils.recommend_vessel(
                             cargo_weight,
-                            (
-                                (dest_info or {}).get("cargo_depth_m")
-                                or (dest_info or {}).get("channel_depth_m")
-                                or (dest_info or {}).get("max_draft_m")
-                            ),
-                            port_name=req.current_port,
-                            origin_port_name=origin,
-                            predicted_rate=rate,
-                            previous_rate=base["prev"],
+                            ((dest_info or {}).get("cargo_depth_m") or (dest_info or {}).get("channel_depth_m") or (dest_info or {}).get("max_draft_m")),
+                            port_name=req.current_port, origin_port_name=origin,
+                            predicted_rate=rate, previous_rate=core["prev"],
                         )
                         recommended_vessel = recommendation.get("recommended_vessel")
                 except Exception:
-                    # Vessel recommendation is supplementary; never discard a
-                    # valid freight/risk candidate because static port metadata
-                    # is incomplete.
                     recommended_vessel = None
 
-                # Discount earnings potential by ballast/idle time so a far,
-                # high-rate option does not automatically beat a nearby one.
                 score = rate / (1 + (ballast_days or 0) / 30.0)
                 candidates.append({
                     "origin_port": origin,
@@ -866,11 +642,7 @@ class ModelBundle:
                     "ballast_distance_nm": distance_nm,
                     "estimated_ballast_days": ballast_days,
                     "score": round(float(score), 3),
-                    "note": build_idle_reposition_note(
-                        origin=origin,
-                        commodity=commodity,
-                        current_port=req.current_port,
-                    ),
+                    "note": build_idle_reposition_note(origin=origin, commodity=commodity, current_port=req.current_port),
                 })
 
         candidates.sort(key=lambda c: c["score"], reverse=True)
@@ -886,17 +658,36 @@ class ModelBundle:
             "errors": errors,
         }
 
+    def route_freight_history_12m(self):
+        """Trailing-12-month average route-freight rate, aggregated across
+        every route in the currently-loaded dataset. Replaces the old
+        dashboard `bdry_history_12m` series (BDRY ETF close price), which
+        was a market index, not a freight rate at all.
+        """
+        if self.route_freight is None or self.route_freight.data.empty:
+            return []
+        df = self.route_freight.data.copy()
+        df["observation_date"] = pd.to_datetime(df["observation_date"])
+        df["month"] = df["observation_date"].values.astype("datetime64[M]")
+        monthly = df.groupby("month")["freight_usd_per_t"].mean().sort_index()
+        monthly = monthly.tail(12)
+        return [
+            {"month": pd.Timestamp(m).strftime("%Y-%m"), "value": round(float(v), 2)}
+            for m, v in monthly.items()
+        ]
+
     def _port_info(self, name):
-        info=port_utils.get_port(name)
-        if not info: return {"name":name,"known":False}
+        info = port_utils.get_port(name)
+        if not info:
+            return {"name": name, "known": False}
         return {
-            "name":name,"known":True,
-            "max_loa_m":info.get("max_loa_m"),
-            "max_beam_m":info.get("max_beam_m"),
-            "max_draft_m":info.get("max_draft_m"),
-            "cargo_handling_rate_tpd":info.get("cargo_handling_rate_tpd"),
-            "typical_congestion":info.get("typical_congestion"),
-            "notes":info.get("notes"),
-            "data_status":info.get("data_status"),
-            "source_note":info.get("source_note"),
+            "name": name, "known": True,
+            "max_loa_m": info.get("max_loa_m"),
+            "max_beam_m": info.get("max_beam_m"),
+            "max_draft_m": info.get("max_draft_m"),
+            "cargo_handling_rate_tpd": info.get("cargo_handling_rate_tpd"),
+            "typical_congestion": info.get("typical_congestion"),
+            "notes": info.get("notes"),
+            "data_status": info.get("data_status"),
+            "source_note": info.get("source_note"),
         }

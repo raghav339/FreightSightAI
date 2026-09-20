@@ -7,13 +7,12 @@ Port infrastructure + vessel-feasibility helpers.
 
 Implements the parts of the SIH26006 problem statement that a plain rate
 forecast doesn't cover:
-  (b) Vessel Type Optimization  -> feasible_vessels() / recommend_vessel()
-  (c) Idle Scenario Management  -> idle_management_advice()
+  (b) Vessel Type Optimization  -> feasible_vessels_both_ports() / recommend_vessel()
   (d) Risk Mitigation           -> congestion_warning()
-  Objective (spot -> COA)       -> contracting_strategy()
+
+(Idle-scenario advice and COA contracting-strategy text live in decision_text.py.)
 """
 import json
-import math
 import os
 from pathlib import Path
 import re
@@ -30,7 +29,7 @@ from app.decision_text import (
 )
 
 _ML_SERVICE_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR, DATA_SOURCE_MODE = resolve_data_dir(_ML_SERVICE_ROOT)
+DATA_DIR, _ = resolve_data_dir(_ML_SERVICE_ROOT)
 VESSEL_FILE = DATA_DIR / "vessel_class_master.csv"
 if not VESSEL_FILE.exists():
     VESSEL_FILE = DATA_DIR / "global_cargo_ships.csv"
@@ -464,8 +463,11 @@ def get_port(name: str):
     """Case/alias-tolerant lookup; returns None if we have no infra data for it."""
     if name in PORT_INFRA:
         return PORT_INFRA[name]
+    normalized = str(name).strip().lower()
     for key, info in PORT_INFRA.items():
-        if info.get("alias", "").lower() == name.lower():
+        if key.strip().lower() == normalized:
+            return info
+        if info.get("alias", "").lower() == normalized:
             return info
     return None
 
@@ -592,93 +594,6 @@ def feasible_vessels_both_ports(cargo_tonnage, origin_port_info, destination_por
         feasible.append(entry)
 
     return feasible, rejected
-
-
-def feasible_vessels(
-    cargo_tonnage,
-    port_depth,
-    *,
-    port_info=None,
-    max_draft=None,
-):
-    """
-    Return vessel classes capable of carrying the cargo and
-    physically feasible for the port.
-
-    The cargo suitability comes from Global Cargo Ships Dataset
-    typical DWT values.
-
-    The port check compares vessel draft against the destination
-    port's usable depth.
-
-    Existing optional max_draft support is retained.
-
-    NOTE (Phase 6): this function only ever checks ONE port and is kept for
-    backward compatibility / single-port callers. predict()'s main
-    feasibility decision now goes through feasible_vessels_both_ports()
-    instead, which enforces both origin AND destination.
-    """
-    cargo_tonnage = float(cargo_tonnage)
-    port_depth = (
-        float(port_depth)
-        if port_depth is not None
-        else None
-    )
-
-    candidates = []
-
-    for _, row in VESSEL_SPECS.iterrows():
-        typical_dwt = float(row["typical_dwt"])
-
-        # Vessel must be able to carry the cargo.
-        if typical_dwt < cargo_tonnage:
-            continue
-
-        draft = (
-            float(row["typical_draft"])
-            if pd.notna(row["typical_draft"])
-            else None
-        )
-
-        # If no port depth is available, preserve the candidate
-        # instead of incorrectly rejecting it.
-        port_ok = True
-
-        if port_info:
-            port_ok = vessel_fits_port(
-                row["vessel_class"],
-                port_info,
-            )
-        elif port_depth is not None and draft is not None:
-            port_ok = draft <= port_depth
-
-        # Preserve the existing optional maximum-draft constraint.
-        if max_draft is not None and draft is not None:
-            if draft > float(max_draft):
-                port_ok = False
-
-        candidates.append(
-            {
-                "vessel_class": row["vessel_class"],
-                "typical_dwt": typical_dwt,
-                "typical_draft": draft,
-                "typical_length": (
-                    float(row["typical_length"])
-                    if pd.notna(row["typical_length"])
-                    else None
-                ),
-                "typical_beam": (
-                    float(row["typical_beam"])
-                    if pd.notna(row["typical_beam"])
-                    else None
-                ),
-                "port_depth": port_depth,
-                "port_ok": port_ok,
-            }
-        )
-
-    return candidates
-
 
 
 def recommend_vessel(
@@ -877,63 +792,3 @@ def congestion_warning(origin: str, destination: str) -> str:
         return "No elevated port-congestion risk flagged for this route."
     return " | ".join(notes)
 
-
-def idle_management_advice(turnaround_days: float, pct_move: float, risk_label: str) -> str:
-    """(c) Idle Scenario Management — heuristic guidance on reducing vessel
-    idle time / deadheading given expected turnaround and market direction."""
-    if turnaround_days > 4 and risk_label in ("medium", "high"):
-        return (
-            f"Estimated turnaround at discharge is ~{turnaround_days} days, above the 4-day comfort band. "
-            "Pre-book a laycan window with buffer, and line up a backhaul or repositioning cargo "
-            "(e.g. an outbound iron-ore/agri parcel) so the vessel isn't idle waiting at anchorage."
-        )
-    if pct_move < -0.03:
-        return (
-            "Rates are trending down — instead of chartering now and risking idle time at a lower rate later, "
-            "consider a short ballast reposition toward a firmer nearby load port, or hold the vessel on a "
-            "1-2 week extendable option."
-        )
-    if turnaround_days > 4:
-        return (
-            f"Estimated turnaround at discharge is ~{turnaround_days} days. Coordinate berth prioritization "
-            "in advance to avoid anchorage queueing and idle days."
-        )
-    return "Turnaround and market direction look manageable; no special idle-time mitigation needed."
-
-
-def contracting_strategy(pct_move: float, risk_label: str, contract_duration_months: float | None,
-                          total_program_tons: float | None, cargo_weight_tons: float) -> str:
-    """Objective: shift from repeated single spot fixtures to short/mid-term
-    multiple-voyage contracts (COA) where the data supports it."""
-    
-    if total_program_tons and cargo_weight_tons and total_program_tons < cargo_weight_tons:
-        total_program_tons = None
-
-    if total_program_tons and cargo_weight_tons:
-        n_voyages = max(1, math.ceil(total_program_tons / cargo_weight_tons))
-    else:
-        n_voyages = None
-
-    duration_note = f" over {contract_duration_months:.0f} months" if contract_duration_months else ""
-
-    if risk_label == "high":
-        base = (
-            f"Market volatility is high — a Contract of Affreightment (COA){duration_note} locking in "
-            "today's terms across multiple voyages hedges against future rate spikes better than repeated spot fixtures."
-        )
-    elif pct_move > 0.03:
-        base = (
-            f"Rates are trending up — securing a short/mid-term COA{duration_note} now, rather than re-entering "
-            "the spot market voyage-by-voyage, locks in the current rate before further increases."
-        )
-    elif pct_move < -0.03:
-        base = (
-            "Rates are trending down — a short spot or index-linked fixture is preferable to a long COA right now; "
-            "revisit COA coverage once rates stabilise."
-        )
-    else:
-        base = f"Rates look stable — a mid-term COA{duration_note} can still reduce chartering overhead versus repeated single spot voyages."
-
-    if n_voyages:
-        base += f" At {cargo_weight_tons:,.0f}t per lift, the {total_program_tons:,.0f}t program implies roughly {n_voyages} voyages."
-    return base

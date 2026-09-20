@@ -11,7 +11,7 @@ something it isn't:
   with `python scripts/generate_data_manifest.py synthetic`.
 
 - **`production/`** — empty by default. This is where verified real-world
-  datasets go, matching the same seven filenames/schemas documented in
+  datasets go, matching the filenames/schemas documented in
   `production/README.md`. `train.py` automatically prefers this directory
   the moment all required files are present here, and prints which
   directory it actually used (it never silently mixes the two). Run

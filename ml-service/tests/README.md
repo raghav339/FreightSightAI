@@ -1,37 +1,26 @@
 # ML-service tests
 
-Run with (no `pip install` required — these only need numpy/pandas/
-scikit-learn/joblib, which this environment already has):
+Run from `ml-service/` (needs `pip install -r requirements.txt` plus `pytest`):
 
-    cd ml-service
-    python -m unittest discover -s tests -v
+    python -m pytest tests -q
 
-- `test_port_utils.py` — Phase 6 both-port vessel feasibility engine.
-  Fully self-contained (synthetic port/vessel specs), no trained model
-  needed.
-- `test_fallback_hierarchy.py` — Phase 7 deterministic fallback hierarchy.
-  Needs trained model artifacts in `models/` (run `python train.py`
-  first if `models/metadata.json` doesn't exist yet); skips itself
-  automatically otherwise rather than failing.
-- `test_predict_integration.py` — full end-to-end `ModelBundle.predict()`
-  runs against the checked-in production model (no `pip install`
-  needed — uses a plain `SimpleNamespace` stand-in for
-  `schemas.ForecastRequest` instead of pydantic). Covers the full
-  response contract, the Phase 4 multi-horizon curve, Phase 2/3
-  forecast-type/data-confidence labelling, and the Phase 24/25 edge
-  cases (1000-tonne cargo, infeasible requested vessel).
+The route-freight models are large, so run files one at a time if memory is tight:
 
-**Known hard blocker (not a gap left on purpose):**
-`ModelBundle.compare_origins()` and `.idle_alternatives()` construct real
-`schemas.ForecastRequest` / request objects internally using `pydantic`
-models, so they cannot be exercised in an environment without `pydantic`
-installed, even indirectly. Once `pip install -r requirements.txt` is
-possible, add `test_compare_origins.py` / `test_idle_alternatives.py`
-following the same pattern as `test_predict_integration.py`.
+    python -m pytest tests/test_port_utils.py -q
 
-As of this session: **35/35 passing**, executed directly (not just
-written) against a freshly retrained model AND the checked-in production
-model, in an environment with no network access — see
-`docs/SIH26006_TRACEABILITY.md` for what remains untested (route-level
-HTTP integration, auth flows, admin endpoints, `compare_origins`/
-`idle_alternatives`, and the risk-threshold math inside `train.py`).
+| File | Covers |
+|---|---|
+| `test_port_utils.py` | Both-port vessel feasibility engine (self-contained) |
+| `test_predict_integration.py` | End-to-end `ModelBundle.predict()` against the checked-in models |
+| `test_compare_origins.py` | Origin comparison |
+| `test_idle_alternatives.py` | Idle-vessel repositioning alternatives |
+| `test_idle_detector.py` | AIS idle-vessel detection |
+| `test_port_radar.py` | Port Disruption Radar rules and end-to-end behaviour |
+| `test_coa_optimizer.py` | COA / multi-voyage optimizer |
+| `test_route_freight_model.py` | Route-freight model training and lookup |
+| `test_route_model.py` | `RouteModel` wrapper |
+| `test_synthetic_market_proxy.py` | Synthetic route-rate fallback |
+| `test_brent.py` | Brent cache, staleness handling and the fuel-shock risk factor |
+| `test_baseline_guardrail.py` | Naive-persistence guardrail for route models |
+
+`_shared_models.py` caches loaded models across tests. `conftest.py` sets `BRENT_ENABLED=false` so the suite stays offline and deterministic.

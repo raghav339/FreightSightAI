@@ -11,12 +11,7 @@ from pathlib import Path
 
 REQUIRED_FILES = (
     "world_port_index_clean.csv",
-    "ores_minerals_trade.csv",
-    "india_trade_2010_2021.csv",
-    "portwatch_daily.csv",
     "global_cargo_ships.csv",
-    "brent_oil.csv",
-    "bdry.csv",
 )
 
 

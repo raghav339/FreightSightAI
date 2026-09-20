@@ -22,7 +22,7 @@ function ChartTooltip({ active, payload, label }) {
       <div className="mt-0.5 font-display text-sm font-semibold text-signal">
         {Number(point.value).toFixed(2)}
         <span className="ml-1.5 font-body text-xs font-normal text-slate-400">
-          {point.payload?.isForecast ? "BDRY Forecast" : "BDRY"}
+          {point.payload?.isForecast ? "Forecast" : "USD/t"}
         </span>
       </div>
     </div>
@@ -40,8 +40,8 @@ export default function TrendChart({ points }) {
       .then(({ data }) => {
         if (!cancelled) {
           setHistory(
-            Array.isArray(data.bdry_history_12m)
-              ? data.bdry_history_12m
+            Array.isArray(data.route_freight_history_12m)
+              ? data.route_freight_history_12m
               : []
           );
         }
@@ -72,7 +72,7 @@ export default function TrendChart({ points }) {
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-signal/10 text-signal">
             <LineChartIcon className="h-[18px] w-[18px]" />
           </span>
-          <CardTitle className="text-lg">{"BDRY freight-rate trend — last 12 months"}</CardTitle>
+          <CardTitle className="text-lg">{"Route freight-rate trend — last 12 months"}</CardTitle>
         </CardHeader>
         <CardContent className="pt-2">
           <ResponsiveContainer width="100%" height={280}>

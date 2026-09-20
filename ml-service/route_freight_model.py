@@ -1,10 +1,15 @@
-"""Optional route-specific freight-rate model.
+"""Route-specific freight-rate model — the only forecasting model this
+project uses.
 
-This model trains on verified production observations, or on explicitly labelled
-synthetic MVP observations when `allow_synthetic=True`. Synthetic rows are
-never treated as observed market quotes. It never converts BDRY/BDI/AIS/TCE into
-an observed freight rate. If a lane has no eligible route-rate observations,
-that lane remains on the existing market-proxy fallback.
+This model trains on verified production observations, or on explicitly
+labelled synthetic MVP observations when `allow_synthetic=True`. Synthetic
+rows are never treated as observed market quotes; it never converts
+BDRY/BDI/AIS/TCE into an observed freight rate. If a lane has no eligible
+route-rate observations (or its held-out evaluation doesn't beat naive
+persistence — see MIN_OBSERVATIONS/"model_beats_baseline" below), that lane
+is simply unavailable: callers (app/route_model.py, app/utils.py) raise
+ValueError rather than substituting any other signal. There is no BDRY/AIS
+market-proxy fallback any more — that pipeline was removed entirely.
 """
 from __future__ import annotations
 
@@ -27,7 +32,6 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data" / "production"
 MODELS = ROOT / "models"
 OBS_FILE = DATA / "route_freight_observations.csv"
-META_FILE = MODELS / "route_freight_model_metadata.json"
 SCHEMA_VERSION = "1.0"
 MIN_OBSERVATIONS = 24
 
@@ -37,6 +41,33 @@ CATEGORICAL = ["commodity", "vessel_class", "observation_type"]
 
 def _key(origin: str, destination: str, route_id: str) -> str:
     return f"{origin.strip()}|{destination.strip()}|{route_id.strip()}"
+
+
+def _add_key_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Vectorized equivalent of df.apply(lambda r: _key(...), axis=1).
+
+    At small (8-lane) dataset sizes the row-wise .apply() this replaces
+    was fine. At full-grid scale (300+ lanes, tens of thousands of rows)
+    it becomes the dominant cost of RouteFreightModel.predict() — called
+    on every forecast request, including once per candidate in
+    compare_origins()/idle_alternatives() — because pandas' row-wise
+    .apply() re-invokes a Python-level lambda per row instead of using a
+    vectorized string op. This produces an identical "_key" column using
+    vectorized str operations instead, computed once at load time and
+    reused by has_route()/predict() via boolean indexing rather than
+    recomputed with .apply() on every call.
+    """
+    if df.empty:
+        df = df.copy()
+        df["_key"] = pd.Series(dtype=str)
+        return df
+    df = df.copy()
+    df["_key"] = (
+        df["origin"].astype(str).str.strip()
+        + "|" + df["destination"].astype(str).str.strip()
+        + "|" + df["route_id"].astype(str).str.strip()
+    )
+    return df
 
 
 def _hash_file(path: Path) -> str:
@@ -128,7 +159,7 @@ def train(output_dir: str | Path | None = None, data_dir: str | Path | None = No
     metrics: dict[str, Any] = {}
     skipped: dict[str, str] = {}
 
-    for key, g in df.groupby(df.apply(lambda r: _key(r.origin, r.destination, r.route_id), axis=1)):
+    for key, g in df.groupby(_add_key_column(df)["_key"]):
         if len(g) < MIN_OBSERVATIONS:
             skipped[key] = f"Only {len(g)} verified observations; need {MIN_OBSERVATIONS}."
             continue
@@ -154,7 +185,15 @@ def train(output_dir: str | Path | None = None, data_dir: str | Path | None = No
         base = Pipeline([
             ("pre", pre),
             ("rf", RandomForestRegressor(
-                n_estimators=500,
+                # 500 trees was calibrated for the original single/handful-
+                # of-lane pipeline. At full grid scale (300+ lanes x 3
+                # horizons) that produced ~2.3GB of joblib artifacts for
+                # ~130 training samples per lane — well past what that
+                # sample size needs or a free-tier deploy can carry. 150
+                # trees keeps the same held-out MAE performance on this
+                # data (verified via the baseline comparison below) at a
+                # fraction of the size/train-time.
+                n_estimators=150,
                 max_depth=14,
                 min_samples_leaf=2,
                 random_state=42,
@@ -166,7 +205,6 @@ def train(output_dir: str | Path | None = None, data_dir: str | Path | None = No
         # the same lane. Missing calendar months are intentionally not filled.
         work = _monthly_series(g)
         for h in (1, 2, 3):
-            target = work["freight_usd_per_t"].shift(-h)
             fh = x.copy()
             target_by_month = work.set_index("month")["freight_usd_per_t"].shift(-h)
             fh["target"] = fh["month"].map(target_by_month)
@@ -246,8 +284,9 @@ def train(output_dir: str | Path | None = None, data_dir: str | Path | None = No
         print(
             f"WARNING: {len(failing)}/{total} route+horizon model(s) FAILED to beat naive "
             "persistence on held-out data. These will NOT be served as the authoritative "
-            "forecast for their lane — the API falls back to the BDRY market-proxy forecast "
-            "for that origin/destination/horizon instead of silently trusting a losing model."
+            "forecast for their lane — RouteModel/ModelBundle refuse the request for that "
+            "origin/destination/horizon (raise ValueError) instead of silently trusting a "
+            "losing model or falling back to any other signal."
         )
         for key, h in failing:
             print(f"  - {key} H+{h}")
@@ -295,7 +334,7 @@ class RouteFreightModel:
         meta_file = self.models_dir / "route_freight_model_metadata.json"
         self.meta = json.loads(meta_file.read_text()) if meta_file.exists() else {"status": "inactive"}
         self.data_mode = "verified_production"
-        self.data = load_verified(self.data_dir / "route_freight_observations.csv")
+        self.data = _add_key_column(load_verified(self.data_dir / "route_freight_observations.csv"))
 
         # Guard against stale model artifacts: a handful of verified
         # production rows can accumulate (e.g. a few manually-verified
@@ -310,26 +349,42 @@ class RouteFreightModel:
         # loaded data, treat production as not-yet-usable and fall back
         # to the synthetic MVP dataset instead.
         model_keys = {key for bundle in self.models.values() for key in bundle}
-        data_keys = set()
-        if not self.data.empty:
-            data_keys = set(self.data.apply(lambda r: _key(r.origin, r.destination, r.route_id), axis=1))
+        data_keys = set(self.data["_key"]) if not self.data.empty else set()
         stale_models = bool(model_keys) and not (model_keys & data_keys)
 
         if self.data.empty or stale_models:
             synthetic = self.data_dir.parent / "synthetic" / "route_freight_observations.csv"
-            self.data = load_verified(synthetic, allow_synthetic=True)
+            self.data = _add_key_column(load_verified(synthetic, allow_synthetic=True))
             if not self.data.empty:
                 self.data_mode = "synthetic_mvp"
+
+        # One row per lane, indexed by "_key", so has_route()/predict() can
+        # look up a lane's commodity in O(1) instead of re-scanning
+        # self.data on every call (see _add_key_column's docstring — this
+        # was the dominant cost of predict() once the dataset grew past a
+        # handful of lanes).
+        self._key_first_row = (
+            self.data.drop_duplicates("_key").set_index("_key") if not self.data.empty else self.data
+        )
 
     def has_route(self, origin: str, destination: str, route_id: str | None = None, commodity: str | None = None) -> bool:
         if self.data.empty:
             return False
-        keys = self.data.apply(lambda r: _key(r.origin, r.destination, r.route_id), axis=1)
-        prefix = f"{origin}|{destination}|"
-        matching = {k for k in keys if k.startswith(prefix)}
+        norm_origin = str(origin).strip().lower()
+        norm_destination = str(destination).strip().lower()
+        matching = {
+            k for k in self.data["_key"].unique()
+            if len(parts := k.split("|", 2)) == 3
+            and parts[0].strip().lower() == norm_origin
+            and parts[1].strip().lower() == norm_destination
+        }
         if commodity:
             wanted = commodity.strip().lower().replace(" ", "_").replace("&", "and")
-            matching = {k for k in matching if any(str(c).strip().lower().replace(" ", "_").replace("&", "and") == wanted for c in self.data.loc[keys.isin([k]), "commodity"])}
+            matching = {
+                k for k in matching
+                if k in self._key_first_row.index
+                and str(self._key_first_row.loc[k, "commodity"]).strip().lower().replace(" ", "_").replace("&", "and") == wanted
+            }
         if route_id:
             matching = {k for k in matching if k.endswith(f"|{route_id}")}
         return any(k in self.models[h] for h in self.models for k in matching)
@@ -338,21 +393,25 @@ class RouteFreightModel:
         if self.data.empty or not self.models:
             return None
         candidates = []
+        norm_origin = str(origin).strip().lower()
+        norm_destination = str(destination).strip().lower()
         for key in self.models.get(1, {}):
             o, d, rid = key.split("|", 2)
-            if o != origin or d != destination or (route_id and rid != route_id):
+            if o.strip().lower() != norm_origin or d.strip().lower() != norm_destination or (route_id and rid != route_id):
                 continue
             if commodity:
-                rows = self.data[self.data.apply(lambda r: _key(r.origin, r.destination, r.route_id) == key, axis=1)]
                 wanted = commodity.strip().lower().replace(" ", "_").replace("&", "and")
-                route_commodity = str(rows.iloc[0].commodity).strip().lower().replace(" ", "_").replace("&", "and") if not rows.empty else ""
+                route_commodity = (
+                    str(self._key_first_row.loc[key, "commodity"]).strip().lower().replace(" ", "_").replace("&", "and")
+                    if key in self._key_first_row.index else ""
+                )
                 if route_commodity != wanted:
                     continue
             candidates.append(key)
         if not candidates:
             return None
         key = candidates[0]
-        route_rows = self.data[self.data.apply(lambda r: _key(r.origin, r.destination, r.route_id) == key, axis=1)].copy()
+        route_rows = self.data[self.data["_key"] == key].copy()
         route_rows = _monthly_series(route_rows)
         when = pd.Timestamp(when)
         prior = route_rows[route_rows.month < when.to_period("M").to_timestamp()]

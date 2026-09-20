@@ -1,35 +1,73 @@
-// Approximate lat/lng for every port FreightSight AI's model knows about
-// (see ml-service/train.py EAST_COAST + origins list, and
-// ml-service/data/world_port_index_clean.csv for the India discharge ports).
-// Used only to place markers/route lines on the map — not fed into the model.
-export const PORT_COORDINATES = {
-  // Loading (origin) ports
-  Newcastle: { lat: -32.9283, lng: 151.7817, country: "Australia" },
-  "Hay Point": { lat: -21.2833, lng: 149.2833, country: "Australia" },
-  Gladstone: { lat: -23.8489, lng: 151.25, country: "Australia" },
-  Norfolk: { lat: 36.8508, lng: -76.2859, country: "United States" },
-  Baltimore: { lat: 39.2904, lng: -76.6122, country: "United States" },
-  Nacala: { lat: -14.5628, lng: 40.6728, country: "Mozambique" },
-  Beira: { lat: -19.8317, lng: 34.8389, country: "Mozambique" },
-  Vostochny: { lat: 42.7333, lng: 133.0833, country: "Russia" },
-  Murmansk: { lat: 68.9585, lng: 33.0827, country: "Russia" },
-  Samarinda: { lat: -0.5021, lng: 117.1536, country: "Indonesia" },
-  Taboneo: { lat: -3.6167, lng: 114.5333, country: "Indonesia" },
+// frontend/src/data/portCoordinates.js
+//
+// Lat/lng lookup for every loading (origin) and discharge (destination)
+// port this app knows about. Used by RouteMap.jsx to place markers and
+// plot an indicative maritime corridor — not a navigation-grade source.
+//
+// Coordinates are the port/anchorage's publicly known position (public
+// port-index / gazetteer data), rounded to 4 decimal places.
 
-  // Discharge (destination) ports — India east coast
-  Paradip: { lat: 20.2667, lng: 86.7, country: "India" },
-  Visakhapatnam: { lat: 17.6868, lng: 83.2185, country: "India" },
-  Gangavaram: { lat: 17.63, lng: 83.23, country: "India" },
-  Gopalpur: { lat: 19.26, lng: 84.9, country: "India" },
-  Dhamra: { lat: 20.78, lng: 86.92, country: "India" },
-  "Sagar Sandheads": { lat: 21.2, lng: 88.0, country: "India" },
-  Haldia: { lat: 22.03, lng: 88.06, country: "India" },
-  Chennai: { lat: 13.0827, lng: 80.2707, country: "India" },
-  Kamarajar: { lat: 13.25, lng: 80.34, country: "India" },
-  Tuticorin: { lat: 8.7642, lng: 78.1348, country: "India" },
+const PORT_COORDS = {
+  // Australia — coal loading (Queensland / NSW)
+  "newcastle": { lat: -32.9167, lng: 151.7833 },
+  "gladstone": { lat: -23.85, lng: 151.25 },
+  "hay point": { lat: -21.2833, lng: 149.3 },
+
+  // United States — East Coast
+  "norfolk": { lat: 36.85, lng: -76.3 },
+  "baltimore": { lat: 39.2667, lng: -76.5833 },
+
+  // Mozambique
+  "nacala": { lat: -14.5333, lng: 40.6667 },
+  "beira": { lat: -19.8333, lng: 34.8333 },
+
+  // Russia
+  "vostochny": { lat: 42.75, lng: 133.0833 },
+  "murmansk": { lat: 68.9833, lng: 33.05 },
+
+  // Indonesia
+  "samarinda": { lat: -0.5167, lng: 117.1167 },
+  "taboneo": { lat: -3.6994, lng: 114.4586 },
+
+  // India — East Coast discharge ports
+  "paradip": { lat: 20.2667, lng: 86.6833 },
+  "visakhapatnam": { lat: 17.6983, lng: 83.2786 },
+  "gangavaram": { lat: 17.6246, lng: 83.2404 },
+  "gopalpur": { lat: 19.25, lng: 84.9167 },
+  "dhamra": { lat: 20.7966, lng: 86.9064 },
+  "sagar sandheads": { lat: 20.85, lng: 88.25 },
+  "haldia": { lat: 22.0167, lng: 88.0833 },
+  "chennai": { lat: 13.1, lng: 80.3 },
+  "kamarajar": { lat: 13.2667, lng: 80.3167 },
+  "tuticorin": { lat: 8.8, lng: 78.1667 },
 };
 
-export function getPortCoords(name) {
-  if (!name) return null;
-  return PORT_COORDINATES[name] || null;
+// Alternate spellings/names seen elsewhere in the app or API responses.
+const ALIASES = {
+  "vostochnyy": "vostochny",
+  "kamarajar port": "kamarajar",
+  "ennore": "kamarajar",
+  "haldia port": "haldia",
+  "sandheads": "sagar sandheads",
+  "chennai (madras)": "chennai",
+  "madras": "chennai",
+  "paradip port": "paradip",
+};
+
+function normalize(name) {
+  return String(name || "").trim().toLowerCase();
 }
+
+/**
+ * Look up a port's {lat, lng} by name. Case-insensitive, with a small
+ * alias table for alternate spellings. Returns null if unknown.
+ */
+export function getPortCoords(name) {
+  const key = normalize(name);
+  if (!key) return null;
+  if (PORT_COORDS[key]) return PORT_COORDS[key];
+  if (ALIASES[key] && PORT_COORDS[ALIASES[key]]) return PORT_COORDS[ALIASES[key]];
+  return null;
+}
+
+export default PORT_COORDS;

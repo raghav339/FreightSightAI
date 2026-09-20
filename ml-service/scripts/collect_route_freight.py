@@ -18,15 +18,12 @@ For PDF extraction, install optional dependency: pypdf.
 """
 from __future__ import annotations
 import argparse, csv, hashlib, html as html_lib, json, re
-from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]  # ml-service
 DATA_DIR = ROOT / "data" / "production"
 DEFAULT_OUT = DATA_DIR / "route_freight_observations.csv"
-SOURCE_MANIFEST = DATA_DIR / "route_freight_sources.json"
 REVIEW_DIR = ROOT / "sources"
 REVIEW_FILE = REVIEW_DIR / "review_candidates.csv"
 SCHEMA_VERSION = "1.0"
@@ -73,14 +70,6 @@ DATE_RE = re.compile(r"\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20
 CARGO_RE = re.compile(r"(?P<value>\d{2,6}(?:,\d{3})?)\s*(?:mt|t|tonnes|tons)\b", re.I)
 
 
-def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def iso_date(value: str|None) -> str:
     if not value: return ""
     import datetime as dt
@@ -88,14 +77,6 @@ def iso_date(value: str|None) -> str:
     for fmt in ("%Y-%m-%d","%Y/%m/%d","%d/%m/%Y","%m/%d/%Y","%d-%m-%Y","%b %d %Y","%B %d %Y","%b %d, %Y","%B %d, %Y"):
         try: return dt.datetime.strptime(value, fmt).date().isoformat()
         except ValueError: pass
-    return ""
-
-
-def canon_endpoint(text: str, choices: Iterable[str]) -> str:
-    s=text.lower().strip()
-    for name in choices:
-        if any(a in s for a in ALIASES.get(name,[name.lower()])):
-            return name
     return ""
 
 

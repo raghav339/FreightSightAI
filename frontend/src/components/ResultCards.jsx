@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Anchor, BrainCircuit, CalendarClock, Download, Gauge, Map as MapIcon, RadioTower, Route, ShipWheel, ShieldAlert, Sparkles, TimerReset } from "lucide-react";
-import { Card } from "./ui/card.jsx";
+import { Anchor, CalendarClock, Download, Map as MapIcon, RadioTower, Route, ShipWheel, ShieldAlert, TimerReset, WifiOff } from "lucide-react";
 import { Badge } from "./ui/badge.jsx";
 import { Button } from "./ui/button.jsx";
 import RouteMap from "./ui/RouteMap.jsx";
 import api from "../api/client.js";
+import useNetworkStatus from "../hooks/useNetworkStatus.js";
 
 const RISK_VARIANT = { low: "low", medium: "medium", high: "high" };
 const riskText = { low: "Low", medium: "Medium", high: "High" };
@@ -34,6 +34,7 @@ function WideSection({ eyebrow, title, children, className = "" }) {
 
 export default function ResultCards({ result }) {
   const [pdfLoading, setPdfLoading] = useState(false);
+  const { isSlow } = useNetworkStatus();
   if (!result) return null;
   const riskVariant = RISK_VARIANT[result.risk_label] || "medium";
   const reportAvailable = result.report_available === true;
@@ -54,13 +55,22 @@ export default function ResultCards({ result }) {
     } finally { setPdfLoading(false); }
   }
 
-  const proxyNotice = result.forecast_type === "synthetic_route"
-    ? "MVP data notice: route freight rates are synthetic development data supplied for demonstration. They are not broker quotes, observed market rates, or real-time fixtures."
-    : "Freight forecast uses a market-index (BDRY) proxy because route-level freight observations are unavailable for this lane. It is not an observed route-specific freight rate.";
+  const proxyNotice = "MVP data notice: route freight rates are synthetic development data supplied for demonstration. They are not broker quotes, observed market rates, or real-time fixtures.";
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.42, ease: [0.16, 1, 0.3, 1] }} className="flex flex-col gap-7">
-      {(result.forecast_type === "market_proxy" || result.forecast_type === "synthetic_route") && (
+      {result._cached && (
+        <div className="fs-forecast-notice result-notice flex items-center gap-2">
+          <WifiOff className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            {result._approx
+              ? "Offline — no exact match cached, so this is the closest cached forecast for this lane (different cargo weight/date). Reconnect and re-run for a fresh number."
+              : `Offline — showing a forecast cached from a previous connected session${result._cachedAt ? ` (${new Date(result._cachedAt).toLocaleString()})` : ""}.`}
+          </span>
+        </div>
+      )}
+
+      {(result.forecast_type === "synthetic_route") && (
         <div className="fs-forecast-notice result-notice">{proxyNotice}</div>
       )}
 
@@ -74,13 +84,13 @@ export default function ResultCards({ result }) {
 
       <section className="result-hero">
         <div className="result-hero__left">
-          <div className="result-kicker">BDRY dry-bulk freight-rate proxy</div>
+          <div className="result-kicker">Route freight-rate forecast</div>
           <div className="result-price-row">
             <div className="result-price">{Number(result.forecast_value ?? 0).toFixed(2)}</div>
             <div className="result-unit">USD / ton</div>
           </div>
           <p className="result-route-line">
-            Market-index proxy for {result.commodity || "bulk cargo"} on {result.route || "selected route"}, {Number(result.cargo_weight_tons || 0).toLocaleString()} t, sailing {result.shipment_date || "—"}.
+            Route freight forecast for {result.commodity || "bulk cargo"} on {result.route || "selected route"}, {Number(result.cargo_weight_tons || 0).toLocaleString()} t, sailing {result.shipment_date || "—"}.
           </p>
           <div className="result-rulers">
             {result.distance_km != null && <span>{Number(result.distance_km).toLocaleString()} KM</span>}
@@ -108,7 +118,7 @@ export default function ResultCards({ result }) {
         <div className="analyst-read__number">09</div>
         <div>
           <div className="result-kicker">Analyst read · generated from model output</div>
-          <p className="analyst-read__text">{result.reasoning || `For ${result.commodity || "this cargo"} into ${result.destination_port || "the destination"}, the freight-rate proxy is forecast at about $${Number(result.forecast_value ?? 0).toFixed(2)}/unit. Market risk is ${riskText[result.risk_label] || "medium"}. ${result.charter_window || "Review the projected charter window"}.`}</p>
+          <p className="analyst-read__text">{result.reasoning || `For ${result.commodity || "this cargo"} into ${result.destination_port || "the destination"}, the route freight rate is forecast at about $${Number(result.forecast_value ?? 0).toFixed(2)}/unit. Market risk is ${riskText[result.risk_label] || "medium"}. ${result.charter_window || "Review the projected charter window"}.`}</p>
         </div>
       </section>
 
@@ -116,17 +126,30 @@ export default function ResultCards({ result }) {
         <section className="voyage-plot">
           <div className="voyage-plot__header">
             <div className="result-kicker">Voyage plot — {result.route || "selected route"}</div>
-            <div className="result-kicker">Mercator sketch · great-circle track</div>
+            <div className="result-kicker">{isSlow ? "Lite mode — map skipped" : "Mercator sketch · great-circle track"}</div>
           </div>
-          <div className="voyage-plot__map">
-            <RouteMap origin={result.origin_port_info?.name} destination={result.destination_port_info?.name} className="h-full w-full" />
-          </div>
+          {isSlow ? (
+            // Lite mode: Leaflet's OSM tiles are a burst of small image
+            // requests per view — exactly the kind of thing worth skipping
+            // on a slow/offline connection. The route text stands in for it.
+            <div className="voyage-plot__map flex flex-col items-center justify-center gap-1 border border-dashed border-rule/40 bg-parchment/60 text-center">
+              <MapIcon className="h-5 w-5 text-rule" />
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-inksoft">
+                {result.origin_port_info?.name || "Origin"} → {result.destination_port_info?.name || "Destination"}
+              </span>
+              <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-rule">map tiles skipped to save bandwidth</span>
+            </div>
+          ) : (
+            <div className="voyage-plot__map">
+              <RouteMap origin={result.origin_port_info?.name} destination={result.destination_port_info?.name} className="h-full w-full" />
+            </div>
+          )}
         </section>
       )}
 
       <WideSection eyebrow="Forecast basis" title="What shaped this forecast">
         <div className="result-two-col">
-          <div className="result-paper-card"><div className="result-label">What is predicted</div><div className="result-paper-value">{result.forecast_basis || (result.forecast_type === "route_specific" ? "Verified route freight" : "BDRY dry-bulk market proxy")}</div><div className="result-paper-sub">{result.forecast_source || "Historical BDRY + operational features"}</div></div>
+          <div className="result-paper-card"><div className="result-label">What is predicted</div><div className="result-paper-value">{result.forecast_basis || (result.forecast_type === "route_specific" ? "Verified route freight" : "Synthetic route freight rate (MVP)")}</div><div className="result-paper-sub">{result.forecast_source || "Route freight observations"}</div></div>
           <div className="result-paper-card"><div className="result-label">Data quality</div><div className="result-paper-value">{(result.data_confidence || "medium").toUpperCase()} · {(result.training_data_mode || "unknown").toUpperCase()}</div><div className="result-paper-sub">Latest feature date: {result.latest_feature_date || "—"} · Risk reliability: {result.risk_reliability || "—"}</div></div>
         </div>
       </WideSection>

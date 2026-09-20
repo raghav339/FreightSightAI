@@ -14,3 +14,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Resilience mode — app-shell service worker (see public/sw.js). Production
+// only, so the Vite dev server's own HMR/caching behavior is untouched.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}

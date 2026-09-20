@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import api from "../api/client.js";
 import { Button } from "../components/ui/button.jsx";
 

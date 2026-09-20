@@ -22,7 +22,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.utils import ModelBundle  # noqa: E402
+from tests._shared_models import get_bundle  # noqa: E402
 
 
 def make_request(**overrides):
@@ -49,7 +49,7 @@ def make_request(**overrides):
 class TestPredictIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.bundle = ModelBundle()
+        cls.bundle = get_bundle()
 
     def test_predict_returns_all_contract_fields(self):
         """Every field schemas.ForecastResponse declares must actually be
@@ -72,11 +72,16 @@ class TestPredictIntegration(unittest.TestCase):
         for field in required_fields:
             self.assertIn(field, result, f"predict() output missing '{field}'")
 
-    def test_forecast_type_is_honestly_labelled_market_proxy(self):
-        """Phase 2/3: this pipeline's only rate signal is BDRY, so
-        forecast_type must never silently claim 'route_specific'."""
+    def test_forecast_type_is_honestly_labelled(self):
+        """forecast_type must honestly reflect where the number came from.
+        There is no BDRY market-proxy signal any more (see
+        app/route_model.py's module docstring) — every served forecast is
+        route-freight-based, labelled 'synthetic_route' for the synthetic
+        MVP dataset this project ships, or 'route_specific' once verified
+        production observations exist for a lane."""
         result = self.bundle.predict(make_request())
-        self.assertEqual(result["forecast_type"], "market_proxy")
+        self.assertIn(result["forecast_type"], ("synthetic_route", "route_specific"))
+        self.assertEqual(result["forecast_type"], result["training_data_mode"] == "synthetic_mvp" and "synthetic_route" or "route_specific")
 
     def test_forecast_curve_has_genuinely_distinct_horizons(self):
         """Phase 4: H+1/H+2/H+3 must come from three separately-trained
@@ -96,19 +101,23 @@ class TestPredictIntegration(unittest.TestCase):
             self.assertGreaterEqual(p["confidence"], 0.0)
             self.assertLessEqual(p["confidence"], 1.0)
 
-    def test_data_confidence_matches_data_source_level_mapping(self):
-        """Phase 2/3: an exact destination+commodity match should not be
-        reported as low confidence, and a fabricated global-proxy request
-        should never be reported as high confidence."""
+    def test_data_confidence_reflects_synthetic_vs_verified_data(self):
+        """An exact, covered lane on the synthetic MVP dataset must be
+        reported as low confidence (it's explicitly synthetic development
+        data, never to be overstated as verified) — and data_source_level
+        must agree with forecast_type rather than naming a fallback tier
+        that no longer exists (the old BDRY destination/commodity/
+        global-proxy hierarchy was removed with the BDRY pipeline itself)."""
         exact = self.bundle.predict(make_request(destination_port="Paradip", commodity="Coal"))
-        self.assertEqual(exact["data_source_level"], "destination_commodity")
-        self.assertIn(exact["data_confidence"], ("high", "medium"))  # may be capped by model uncertainty, never fabricated up
+        self.assertEqual(exact["data_source_level"], exact["forecast_type"])
+        self.assertEqual(exact["data_confidence"], "low")
 
-        proxy = self.bundle.predict(make_request(
-            destination_port="Nonexistent Port XYZ", commodity="Nonexistent Commodity XYZ"
-        ))
-        self.assertEqual(proxy["data_source_level"], "global_proxy")
-        self.assertEqual(proxy["data_confidence"], "low")
+        # An uncovered lane is no longer silently answered via a fallback
+        # tier — it's refused outright (see test_lane_with_no_route_freight_coverage_is_refused).
+        with self.assertRaises(ValueError):
+            self.bundle.predict(make_request(
+                destination_port="Nonexistent Port XYZ", commodity="Nonexistent Commodity XYZ",
+            ))
 
     def test_1000_tonne_cargo_still_produces_a_usable_forecast(self):
         """Phase 24's exact edge case, exercised through the real
@@ -150,16 +159,16 @@ class TestPredictIntegration(unittest.TestCase):
         self.assertTrue(result["alternatives"])
         self.assertTrue(all(x["origin_port"] != "Paradip" for x in result["alternatives"]))
 
-    def test_unknown_destination_and_commodity_never_raises(self):
-        """The fallback hierarchy must always resolve to *something*
-        (global proxy) rather than letting an unrecognized destination/
-        commodity combination raise an unhandled exception up through
-        the API layer."""
-        result = self.bundle.predict(make_request(
-            destination_port="Nonexistent Port XYZ",
-            commodity="Nonexistent Commodity XYZ",
-        ))
-        self.assertEqual(result["data_source_level"], "global_proxy")
+    def test_lane_with_no_route_freight_coverage_is_refused(self):
+        """There is no fallback hierarchy any more — a destination/
+        commodity combination with no route-freight coverage must raise
+        ValueError (surfaced by app/main.py as a 400), never silently
+        resolve to a fabricated global-average number."""
+        with self.assertRaises(ValueError):
+            self.bundle.predict(make_request(
+                destination_port="Nonexistent Port XYZ",
+                commodity="Nonexistent Commodity XYZ",
+            ))
 
 
 if __name__ == "__main__":

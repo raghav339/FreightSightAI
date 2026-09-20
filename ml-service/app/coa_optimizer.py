@@ -8,8 +8,6 @@ expected freight spend plus an explicit risk/idle allowance.
 """
 from __future__ import annotations
 import math
-from datetime import date
-from pathlib import Path
 from .route_model import RouteModel
 
 VESSEL_LOAD_FACTOR = {
@@ -23,7 +21,10 @@ def optimize(req, route_model: RouteModel, port_utils):
     if total <= 0: raise ValueError("total_program_tons must be positive")
     duration=max(float(req.contract_duration_months or 1),1.0)
     spot=getattr(req,"current_spot_rate_usd_per_ton",None)
-    rf=route_model.predict(req.origin_port,req.destination_port,req.shipment_date,spot)
+    # Price the lane for the requested commodity. Most lanes carry several commodities
+    # (Coal / Iron Ore / Bulk Minerals & Ores) and, without this, predict() silently
+    # returns whichever commodity's model it finds first for the origin/destination pair.
+    rf=route_model.predict(req.origin_port,req.destination_port,req.shipment_date,spot,getattr(req,"commodity",None))
     horizon=rf.get("forecasts", [])
     if rf.get("forecast_type") == "route_specific":
         # Direct lane model predicts USD/t itself; use the mean of the

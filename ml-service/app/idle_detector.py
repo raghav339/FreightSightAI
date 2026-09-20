@@ -9,7 +9,7 @@ because it is operator-entered and may be stale.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from math import asin, cos, radians, sin, sqrt
 from typing import Any, Iterable
 
@@ -57,24 +57,6 @@ class Observation:
     nav_status: int | None
     port_near: str | None
     distance_to_port_nm: float | None = None
-
-
-def _parse_time(value: Any) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        dt = value
-    else:
-        text = str(value).strip()
-        if not text:
-            return None
-        try:
-            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        except ValueError:
-            return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
 
 
 def haversine_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -207,11 +189,10 @@ def detect_idle_vessel(
         "cog": latest.cog,
         "heading": latest.heading,
         "nearest_port": latest.port_near,
-        # AIS type 70-79 are cargo-ship categories. AIS alone does not
-        # distinguish every cargo subtype reliably enough to assert "bulk"
-        # ownership; this label is therefore deliberately cautious.
-        "bulk_candidate": isinstance(latest.nav_status, int) and False,
     })
+    # AIS type 70-79 are cargo-ship categories. AIS alone does not
+    # distinguish every cargo subtype reliably enough to assert "bulk"
+    # ownership; this label is therefore deliberately cautious.
     ship_type = (vessel or {}).get("ship_type")
     try:
         ship_type_int = int(ship_type) if ship_type is not None else None

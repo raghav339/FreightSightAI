@@ -185,36 +185,33 @@ def _make_forecast_request(**overrides):
 
 @unittest.skipUnless(
     os.path.exists(os.path.join(MODELS_DIR, "metadata.json")),
-    "No trained model artifacts found — run `python train.py` first.",
+    "No trained model artifacts found — run route_freight_model.py:train() first.",
 )
 class ModelBundleNeverServesAFailingRouteModel(unittest.TestCase):
-    """(3a) app/utils.py:ModelBundle.predict() must fall back to the BDRY
-    market-proxy forecast — never the route-specific number — whenever the
-    route model is known to have lost to naive persistence, and must use
-    the route-specific forecast when it's known to have won."""
+    """(3a) app/utils.py:ModelBundle.predict() must never serve a
+    route-specific forecast that failed (or has no recorded result for) the
+    baseline check as if it were authoritative. There is no longer a BDRY
+    market-proxy fallback to silently substitute — a failing/unknown
+    baseline result means predict() refuses the request outright (raises
+    ValueError), and app/main.py turns that into a 400."""
 
     @classmethod
     def setUpClass(cls):
-        from app.utils import ModelBundle
+        from tests._shared_models import get_bundle
 
-        cls.bundle = ModelBundle()
+        cls.bundle = get_bundle()
 
-    def test_falls_back_when_route_model_fails_baseline(self):
+    def test_refuses_when_route_model_fails_baseline(self):
         self.bundle.route_freight = _FakeRouteFreight(beats_baseline=False)
-        result = self.bundle.predict(_make_forecast_request())
-        self.assertEqual(result["forecast_type"], "market_proxy")
-        self.assertNotEqual(result["predicted_freight_rate_usd_per_ton"], 999.0)
-        self.assertFalse(result["route_model_available"] and result["forecast_type"] != "market_proxy")
-        self.assertEqual(result["route_model_beats_baseline"], False)
-        self.assertIsNotNone(result["route_model_fallback_note"])
+        with self.assertRaises(ValueError):
+            self.bundle.predict(_make_forecast_request())
 
-    def test_falls_back_when_baseline_result_is_unknown(self):
+    def test_refuses_when_baseline_result_is_unknown(self):
         # No recorded comparison (None) must be treated the same as a
         # failure — never assumed to be a pass by default.
         self.bundle.route_freight = _FakeRouteFreight(beats_baseline=None)
-        result = self.bundle.predict(_make_forecast_request())
-        self.assertEqual(result["forecast_type"], "market_proxy")
-        self.assertIsNotNone(result["route_model_fallback_note"])
+        with self.assertRaises(ValueError):
+            self.bundle.predict(_make_forecast_request())
 
     def test_uses_route_model_when_it_beats_baseline(self):
         self.bundle.route_freight = _FakeRouteFreight(beats_baseline=True)
@@ -224,39 +221,51 @@ class ModelBundleNeverServesAFailingRouteModel(unittest.TestCase):
         self.assertEqual(result["route_model_beats_baseline"], True)
         self.assertIsNone(result["route_model_fallback_note"])
 
-    def tearDown(self):
-        # Restore the real route_freight model so other tests in the same
-        # process (if run together) aren't left pointing at the fake.
-        from route_freight_model import RouteFreightModel
+    @classmethod
+    def tearDownClass(cls):
+        # Restore the real route_freight model once, after all tests in
+        # this class have run — each test already sets its own fake at the
+        # start of its body, so per-test restoration isn't needed for
+        # intra-class isolation, only for whichever class/file runs next
+        # against this process-wide cached bundle (see
+        # tests/_shared_models.py).
+        from tests._shared_models import fresh_route_freight
 
-        self.bundle.route_freight = RouteFreightModel(MODELS_DIR, MODELS_DIR.parent / "data" / "production")
+        cls.bundle.route_freight = fresh_route_freight()
 
 
-@unittest.skipUnless(
-    os.path.exists(os.path.join(MODELS_DIR, "route_model_metadata.json")),
-    "No trained route_model.py artifacts found — run app/route_model.py train() first.",
-)
 class RouteModelNeverServesAFailingRouteModel(unittest.TestCase):
     """(3b) app/route_model.py:RouteModel.predict() — the /route-forecast
-    and /coa-optimize path — must fall through to its own market-proxy
-    fallback rather than the route-specific model when the model is known
-    to have failed the baseline check."""
+    and /coa-optimize path — must refuse (raise ValueError) rather than
+    serve a route-specific forecast known to have lost to naive
+    persistence. There is no BDRY market-proxy fallback to fall through to
+    any more (see app/route_model.py's module docstring)."""
 
     @classmethod
     def setUpClass(cls):
-        from app.route_model import RouteModel
+        from tests._shared_models import get_route_model
 
-        cls.model = RouteModel(MODELS_DIR)
+        cls.model = get_route_model()
 
-    def test_falls_back_when_route_model_fails_baseline(self):
+    def test_refuses_when_route_model_fails_baseline(self):
         self.model.route_freight = _FakeRouteFreight(beats_baseline=False)
-        result = self.model.predict("Newcastle", "Paradip", "2026-10-01")
-        self.assertNotEqual(result.get("forecast_type"), "route_specific")
+        with self.assertRaises(ValueError):
+            self.model.predict("Newcastle", "Paradip", "2026-10-01")
 
     def test_uses_route_model_when_it_beats_baseline(self):
         self.model.route_freight = _FakeRouteFreight(beats_baseline=True)
         result = self.model.predict("Newcastle", "Paradip", "2026-10-01")
         self.assertEqual(result["forecast_type"], "route_specific")
+
+    @classmethod
+    def tearDownClass(cls):
+        # Same reasoning as ModelBundleNeverServesAFailingRouteModel
+        # above — this instance is process-wide cached and shared with
+        # test_route_model.py/test_coa_optimizer.py, so a fake left behind
+        # here would silently corrupt whichever test runs next.
+        from tests._shared_models import fresh_route_freight
+
+        cls.model.route_freight = fresh_route_freight()
 
 
 if __name__ == "__main__":

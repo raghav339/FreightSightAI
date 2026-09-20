@@ -17,7 +17,7 @@ from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.utils import ModelBundle  # noqa: E402
+from tests._shared_models import get_bundle  # noqa: E402
 
 
 def make_request(**overrides):
@@ -38,7 +38,7 @@ def make_request(**overrides):
 class TestCompareOrigins(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.bundle = ModelBundle()
+        cls.bundle = get_bundle()
 
     def test_returns_all_known_origins(self):
         """Every origin in metadata.json['origins'] should show up in the
@@ -50,6 +50,39 @@ class TestCompareOrigins(unittest.TestCase):
             e["origin_port"] for e in result["errors"]
         }
         self.assertEqual(known_origins, seen_origins)
+
+    def test_rows_expose_both_port_vessel_status(self):
+        """`feasible` reflects full both-port vessel feasibility (see
+        ModelBundle.compare_origins). Each row must also carry the
+        underlying vessel_status/feasible_vessel_types from predict(), so
+        callers can see *why* a row is feasible or not, not just the
+        boolean — e.g. a destination that no vessel class can serve (such
+        as Chennai) is not reported as feasible."""
+        valid = {
+            "RECOMMENDED_VESSEL", "REQUESTED_VESSEL_FEASIBLE",
+            "REQUESTED_VESSEL_NOT_FEASIBLE_USING_RECOMMENDED", "NO_FEASIBLE_VESSEL",
+        }
+        result = self.bundle.compare_origins(make_request(commodity="Iron Ore", destination_port="Chennai"))
+        self.assertTrue(result["results"])
+        for r in result["results"]:
+            self.assertIn(r["vessel_status"], valid)
+            self.assertIsInstance(r["feasible_vessel_types"], list)
+            if r["vessel_status"] == "NO_FEASIBLE_VESSEL":
+                self.assertEqual(r["feasible_vessel_types"], [])
+
+    def test_vessel_status_matches_predict_for_the_same_origin(self):
+        from datetime import date
+        req = make_request(commodity="Iron Ore", destination_port="Visakhapatnam")
+        result = self.bundle.compare_origins(req)
+        row = next(r for r in result["results"] if r["origin_port"] == "Hay Point")
+        single = type("Req", (), dict(
+            commodity="Iron Ore", origin_port="Hay Point", destination_port="Visakhapatnam",
+            shipment_date=date(2026, 10, 1), cargo_weight_tons=75000.0, cargo_volume_cbm=None,
+            shipment_mode="Bulk Carrier", vessel_type=None, distance_km=None, delay_days=0,
+            contract_duration_months=None, total_program_tons=None))()
+        pred = self.bundle.predict(single)
+        self.assertEqual(row["vessel_status"], pred["vessel_status"])
+        self.assertEqual(row["feasible_vessel_types"], pred["feasible_vessel_types"])
 
     def test_results_sorted_feasible_first_then_by_voyage_days(self):
         """results must be sorted feasible-first, then by ascending
@@ -97,21 +130,24 @@ class TestCompareOrigins(unittest.TestCase):
         finally:
             self.bundle.meta["origins"] = original_origins
 
-    def test_rate_is_identical_across_origins_known_limitation(self):
-        """Documented known limitation, not a bug: predicted_freight_rate_usd_per_ton
-        is identical across all origins for the same request, because the
-        underlying rate/risk model is destination+commodity driven (a
-        global BDRY-based market signal) and has no origin dimension. If a
-        future change gives the model a real origin dimension, this test
-        should be updated deliberately rather than left to fail silently."""
+    def test_rates_vary_by_origin_now_that_the_model_has_an_origin_dimension(self):
+        """Rates now genuinely differ by origin: compare_origins() calls
+        route_freight per origin (see app/utils.py:ModelBundle.compare_origins
+        docstring), and each origin's lane has its own trained model and its
+        own forecast — unlike the old destination+commodity-only BDRY
+        market-proxy signal this replaced, which had no origin dimension at
+        all. This deliberately replaces the old
+        test_rate_is_identical_across_origins_known_limitation, whose own
+        docstring called for exactly this update once that happened."""
         result = self.bundle.compare_origins(make_request())
-        rates = {r["predicted_freight_rate_usd_per_ton"] for r in result["results"]}
-        self.assertEqual(
-            len(rates), 1,
-            "predicted_freight_rate_usd_per_ton varied across origins — "
-            "if the model now has an origin dimension, update this test's "
-            "docstring/expectation deliberately.",
-        )
+        self.assertTrue(result["results"], "expected at least one origin with route-freight coverage")
+        rates = {r["origin_port"]: r["predicted_freight_rate_usd_per_ton"] for r in result["results"]}
+        # Not every result needs a distinct rate (routes can coincidentally
+        # match), but with several origins now individually modelled they
+        # must not all collapse to one shared number the way the old
+        # BDRY-only signal forced them to.
+        if len(rates) > 1:
+            self.assertGreater(len(set(rates.values())), 1, f"rates identical across all origins: {rates}")
 
     def test_every_result_carries_a_rank(self):
         result = self.bundle.compare_origins(make_request())

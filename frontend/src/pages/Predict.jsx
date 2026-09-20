@@ -1,19 +1,27 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import ForecastForm from "../components/ForecastForm.jsx";
 import ResultCards from "../components/ResultCards.jsx";
 import TrendChart from "../components/TrendChart.jsx";
 import AlertsPanel from "../components/AlertsPanel.jsx";
 import WhatIfPanel from "../components/WhatIfPanel.jsx";
+import DecisionSimulator from "../components/DecisionSimulator.jsx";
+import PortRadarNotice from "../components/PortRadarNotice.jsx";
 
 export default function Predict() {
   const [result, setResult] = useState(null);
   const [lastRequest, setLastRequest] = useState(null);
+  const [scenario, setScenario] = useState(null);
 
   function handleResult(data, payload) {
     setResult(data);
     setLastRequest(payload || null);
+    setScenario(null);
   }
+
+  // Stable identity so WhatIfPanel's report-upward effect doesn't re-fire
+  // on every Predict render.
+  const handleScenarioChange = useCallback((next) => setScenario(next), []);
 
   return (
     <section className="predict-page">
@@ -43,9 +51,13 @@ export default function Predict() {
               className="mt-10"
             >
               <ResultCards result={result} />
+              <div className="mt-7">
+                <PortRadarNotice origin={lastRequest?.origin_port} destination={lastRequest?.destination_port} />
+              </div>
               <div className="mt-7 flex flex-col gap-6">
                 <TrendChart points={result.chart_values} />
-                <WhatIfPanel baseRequest={lastRequest} />
+                <WhatIfPanel baseRequest={lastRequest} onScenarioChange={handleScenarioChange} />
+                <DecisionSimulator baseRequest={lastRequest} forecast={result} scenario={scenario} />
                 <AlertsPanel />
               </div>
             </motion.div>

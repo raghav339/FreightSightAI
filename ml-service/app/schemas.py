@@ -112,12 +112,14 @@ class ForecastResponse(BaseModel):
     feature_importance: list[dict] = []
     top_drivers: list[dict] = []
 
-    # Which level of the deterministic market-data fallback hierarchy this
-    # prediction actually used (see ModelBundle._resolve_lookup in utils.py):
-    # "destination_commodity" (exact match), "commodity" (averaged across
-    # destinations for this commodity), or "global_proxy" (averaged across
-    # the whole lookup table). Never an arbitrary/unrelated entry.
-    data_source_level: str = "destination_commodity"
+    # Which forecast pipeline actually produced this prediction. There is
+    # no fallback hierarchy any more (see ModelBundle._route_forecast in
+    # utils.py) — this always mirrors forecast_type: "synthetic_route" for
+    # the synthetic MVP dataset, or "route_specific" once verified
+    # production observations exist for the lane. An uncovered lane is
+    # refused outright (ValueError -> 400), never silently answered with
+    # an unrelated/averaged entry.
+    data_source_level: str = "synthetic_route"
 
     vessel_status: str = "RECOMMENDED_VESSEL"
     vessel_rejection_reason: Optional[str] = None
@@ -127,20 +129,19 @@ class ForecastResponse(BaseModel):
     forecast_curve: list[dict] = []
 
    
-    forecast_type: str = "market_proxy"
+    forecast_type: str = "synthetic_route"
 
-    # High/medium/low, derived from data_source_level + horizon (further
-    # horizons and less-specific fallback levels get lower confidence).
-    # Never fabricated — derived deterministically from the same
-    # data_source_level already computed for this request plus the
-    # horizon-specific evaluation metrics stored in metadata.json.
-    data_confidence: str = "medium"
+    # High/medium/low. Always "low" for the synthetic MVP dataset this
+    # project ships (see ModelBundle._route_forecast) — never fabricated
+    # upward. Will reflect real verified-data confidence once production
+    # route-freight observations exist for a lane.
+    data_confidence: str = "low"
 
     training_data_mode: str = "unknown"
 
     # Decision-quality transparency for mentor/demo and operational use.
-    forecast_basis: str = "BDRY market proxy"
-    forecast_source: str = "BDRY historical market series"
+    forecast_basis: str = "Synthetic route freight rate (MVP)"
+    forecast_source: str = "route_freight_observations.csv (synthetic MVP development dataset)"
     latest_feature_date: Optional[str] = None
     risk_reliability: str = "medium"
     recommended_vessel_reason: str = ""

@@ -16,7 +16,7 @@ TEXT = {'rise': 'rise',
  'window_up': 'Charter within the next 1–2 weeks (rate trending up)',
  'window_down': 'You can wait 2–4 weeks (rate trending down)',
  'window_flat': 'Rate is stable; charter on your normal schedule',
- 'summary': 'For {commodity} into {destination}, the BDRY dry-bulk freight-rate proxy is forecast to {direction} to '
+ 'summary': 'For {commodity} into {destination}, the route freight rate is forecast to {direction} to '
             'about ${forecast:.2f}/unit. {risk_text} {window}. {note}',
  'vessel': 'The recommended vessel is {vessel}. {note}',
  'idle_high': 'Estimated turnaround at discharge is ~{days} days, above the 4-day comfort band. Pre-book a laycan '

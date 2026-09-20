@@ -24,7 +24,6 @@
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8001";
 
 // How long a retried attempt is allowed to sit waiting for a cold boot +
-// How long a retried attempt is allowed to sit waiting for a cold boot +
 // model load. Render enforces a hard ~100s proxy timeout on EVERY HTTP
 // request it fronts — including the browser's request to our own
 // backend — no client or server timeout setting can raise that. So the

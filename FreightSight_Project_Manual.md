@@ -38,9 +38,9 @@ Dataset-upload, dataset-governance, model-promotion, Google-auth, and email-veri
 
 ## 4. Forecasting/data model
 
-The ML service supports market-proxy and route-specific synthetic-MVP pathways. Responses distinguish the forecast basis and confidence level. The route/commodity coverage that lacks verified free public USD/t observations is not presented as real market pricing.
+The ML service is route-freight-only: every forecast comes from `route_freight_model.py`, trained per origin x destination x commodity lane, either on verified production observations or on explicitly labelled synthetic MVP data (`forecast_type: synthetic_route` vs. `route_specific`). There is no separate BDRY/AIS market-proxy pathway — a lane with no route-freight coverage, or whose held-out evaluation doesn't beat naive persistence, is refused outright rather than answered with a fallback signal. Responses distinguish the forecast basis (`forecast_basis`, `forecast_source`) and confidence level (`data_confidence`, always `low` for the synthetic MVP dataset this project ships).
 
-For Newcastle → Chennai → Iron Ore, the synthetic market-proxy series is kept separate from ordinary route-rate labels and is surfaced as `forecast_type: market_proxy`.
+Newcastle → Chennai → Iron Ore (route R8) is one of 335 synthetic lanes covering every origin x destination x commodity combination the app can route a request to, surfaced as `forecast_type: synthetic_route`.
 
 ## 5. Decision-support layers
 

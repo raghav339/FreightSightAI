@@ -8,7 +8,7 @@ Its main workflow is:
 
 ## Recent fixes
 
-See `PROJECT_MANUAL.md` §13 (Changelog) for full detail. Latest:
+See `FreightSight_Project_Manual.md` §13 (Changelog) for full detail. Latest:
 
 - Widened `forecast_results.vessel_constraint_note` and `alerts.message` from `VARCHAR(500)` to `TEXT` — fixes intermittent "Forecast was generated but could not be saved" errors on MySQL caused by generated explanation text exceeding the old column limits.
 - Fixed AIS `PositionReport` ingestion: AISStream's `NavigationalStatus` string enum is now normalized to the numeric ITU-R code the `ais_positions` schema expects, instead of failing every insert.
@@ -21,8 +21,7 @@ FreightSight/
 ├── frontend/      React + Vite judge-facing web application
 ├── backend/       Node.js + Express API, auth, history, PDF export and API proxy
 ├── ml-service/    FastAPI/Python forecasting, risk, vessel/port, AIS and COA logic
-├── docs/          traceability and project documentation
-└── route_freight_sources.json
+└── docs/          traceability and project documentation
 ```
 
 ### Service flow
@@ -53,7 +52,7 @@ Node/Express backend
 - H+1 / H+2 / H+3 freight forecasting
 - Explicit forecast basis, source level and confidence
 - Synthetic route-freight support where verified public USD/t observations are unavailable
-- Risk classification and forecast drivers
+- Risk classification and forecast drivers (rule-based score; includes a small Brent-based fuel-cost-shock factor when fresh data is available)
 - Vessel selection with **both-origin-and-destination** port feasibility checks
 - Origin comparison
 - AIS-enhanced route intelligence and idle-vessel detection
@@ -67,11 +66,9 @@ Node/Express backend
 
 The MVP deliberately distinguishes between observed/verified data and proxies.
 
-- The checked-in route-freight model is currently trained on **synthetic MVP route-rate data** (`data/synthetic/route_freight_observations.csv`).
+- The checked-in route-freight model is currently trained on **synthetic MVP route-rate data** (`data/synthetic/route_freight_observations.csv`), covering every origin x destination x commodity lane the app can route a request to.
 - `route_freight_model_metadata.json` records `verified_rows: 0` and `data_mode: synthetic_mvp`.
-- The Newcastle → Chennai → Iron Ore lane is included as route `R8`.
-- The broader BDRY model is a **global dry-bulk market proxy**, not a broker quote or a direct route freight rate.
-- Historical PortWatch-derived operational features currently end at **October 2024**. Forecasts can therefore report stale historical AIS-derived features when live AIS is unavailable.
+- There is no BDRY/AIS market-proxy fallback: a lane with no route-freight coverage, or whose held-out evaluation doesn't beat naive persistence, is refused outright (the API returns a 400) rather than silently substituted with an unrelated signal.
 - Port dimensions/handling figures are reference data and must be verified with the current terminal/port authority before a real fixture.
 - Live AIS requires an `AISSTREAM_API_KEY`; without it, the application falls back to historical/reference intelligence and clearly reports AIS as unavailable.
 
@@ -189,7 +186,7 @@ The backend exposes the main browser API under `/api`:
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/forecast` | Main forecast + risk + vessel/port decision |
-| `POST /api/route-forecast` | Route-level freight/market-proxy forecast |
+| `POST /api/route-forecast` | Route-level synthetic freight forecast |
 | `POST /api/compare-origins` | Compare loading origins |
 | `POST /api/idle-alternatives` | Reposition an idle vessel |
 | `POST /api/whatif` | Lightweight decision sensitivity |
@@ -202,7 +199,12 @@ The backend exposes the main browser API under `/api`:
 | `GET /api/ais/status` | AIS collector status (connection health, message counts, last error) |
 | `GET /api/ais/route-features` | AIS route features for an origin/destination pair |
 | `GET /api/ais/idle-vessels` | AIS idle-vessel candidates; response includes a `count` of matching vessels for the given query params (not a running total — recomputed live per request) |
+| `GET /api/ais/positions` | Latest known position for every vessel seen recently (one dot per vessel) — powers the Live Fleet map |
+| `GET /api/ais/ports` | Every port FreightSight tracks live AIS activity for, with coordinates |
+| `GET /api/ais/port-radar` | Port Disruption Radar for every tracked port: live AIS congestion vs each port's own normal ([docs/PORT_RADAR.md](docs/PORT_RADAR.md)) |
+| `GET /api/ais/port-radar/:port` | Port Disruption Radar for one port |
 | `GET /api/forecast/:id/pdf` | PDF forecast report |
+| `GET /api/forecast/:id/decision-brief` | One-click Decision Brief PDF: forecast + what-if scenario (`?cargo_weight_tons=&contract_duration_months=`) + COA / loading-port comparison, reduced to one recommendation. Recomputed server-side; same visibility rules as `/pdf`; limited to 10 requests/min |
 | `POST /api/auth/register` | Local account registration |
 | `POST /api/auth/login` | Local login |
 | `GET /api/auth/me` | Restore authenticated session |
@@ -273,22 +275,26 @@ The FastAPI app was also exercised directly with its test client. The following 
 ## Known limitations
 
 1. **Synthetic route-rate data:** route USD/t models are MVP development models, not live broker fixtures.
-2. **Global market proxy:** BDRY is a market proxy and should not be described as an exact route freight quote.
-3. **AIS:** live AIS is optional and requires AISStream credentials; historical PortWatch data is not equivalent to live vessel tracking.
+2. **No market-proxy fallback:** an uncovered lane is refused (400), never silently answered with an unrelated market signal.
+3. **AIS:** live AIS is optional and requires AISStream credentials.
 4. **Port constraints:** several dimensions/handling values are reference or estimated values and require operational verification.
-5. **Model validation:** route metadata shows 24 route/horizon models, of which 22 beat naive persistence and 2 do not. The guardrail prevents failed route models from being silently served.
+5. **Model validation:** route metadata shows 1,005 route/horizon models (335 lanes × 3 horizons), of which 1,004 beat naive persistence and 1 does not. The guardrail prevents failed route models from being silently served.
 6. **Risk classes:** the high-risk class has limited representation in the primary holdout.
 7. **Authentication:** the judge-facing MVP uses local email/password authentication; Google Sign-In and email verification are intentionally out of scope.
 8. **Database:** the checked-in MVP does not depend on a populated production database. `npm run init-db` creates the local SQLite schema and vessel master.
 
 ## Documentation
 
-- `PROJECT_MANUAL.md` — detailed setup, workflows, troubleshooting, architecture and demo guide.
+- `FreightSight_Project_Manual.md` — detailed setup, workflows, troubleshooting, architecture and demo guide.
 - `docs/SIH26006_TRACEABILITY.md` — requirement-to-implementation traceability and verification notes.
 - `ml-service/data/README.md` — data organization and provenance.
 - `ml-service/data/production/README.md` — production-data caveats.
 - `ml-service/data/synthetic/README.md` — synthetic-data disclosure.
 
+
+### Brent fuel-cost signal
+
+The risk score has an optional sixth factor, `fuel_shock`, based on the 30-day move in Brent crude (weight 0.10, taken from volatility and rate-shock). `ml-service/app/brent.py` refreshes `data/production/brent_oil.csv` at startup and then daily from FRED (`DCOILBRENTEU`, no API key; data lags by a few days). Request handling only reads the local cache, so a failed download never affects forecasts. If the data is missing or older than 14 days the factor drops out and the score reverts to its original five factors. Each forecast's `risk_factors.brent` reports the as-of date, and `GET /brent/status` on the ML service shows cache health. Set `BRENT_ENABLED=false` to disable it. The score is a transparent heuristic, not a validated model.
 
 ### Persistent AIS storage (MySQL)
 

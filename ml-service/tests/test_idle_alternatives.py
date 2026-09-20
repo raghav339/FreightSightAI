@@ -22,7 +22,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from app.utils import ModelBundle  # noqa: E402
+from tests._shared_models import get_bundle  # noqa: E402
 
 
 def make_request(**overrides):
@@ -40,7 +40,7 @@ def make_request(**overrides):
 class TestIdleAlternatives(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.bundle = ModelBundle()
+        cls.bundle = get_bundle()
 
     def test_returns_ranked_alternative_loading_ports(self):
         """Given a vessel idle at a known port, idle_alternatives should

@@ -1,18 +1,16 @@
 # FreightSight real-data inputs
 
-Place these public datasets here before running `python train.py`:
+These public datasets support the live app's port/vessel/AIS reference data
+(`app/port_utils.py`, `app/ais_stream.py`) and the route-freight model
+(`route_freight_model.py`). The old BDRY/AIS forecast+risk pipeline
+(`train.py`, which used to require `bdry.csv` here) was removed entirely —
+nothing in this project reads `bdry.csv` any more.
 
 - `world_port_index_clean.csv` — cleaned World Port Index, including cargo/channel depth.
-- `ores_minerals_trade.csv` — India ores/minerals trade with commodity, quantity and year/date.
-- `india_trade_2010_2021.csv` — India trade 2010–2021, used only to extend missing trade coverage.
-- `portwatch_daily.csv` — IMF PortWatch daily port activity/trade estimates.
 - `global_cargo_ships.csv` — global cargo ship specifications including DWT/draft.
-- `brent_oil.csv` — Brent daily price.
-- `bdry.csv` — BDRY daily close price.
-
-The trainer fails loudly if any required file is absent. It does **not** use the old
-`freight_data.csv` synthetic/demo file as a hidden fallback.
+- `brent_oil.csv` — Brent daily spot price (USD/bbl). **Self-refreshing cache** written by `app/brent.py` (startup + daily, from FRED series `DCOILBRENTEU`, lags a few days). The checked-in copy is only a seed; if the file is missing or older than 14 days the Brent risk factor is skipped.
+- `route_freight_observations.csv` — verified route freight-rate observations (see `route_freight_sources.json` for provenance). Train against this with `python scripts/train_route_freight_grid.py` (or `route_freight_model.py:train()` directly) once it has ≥24 observations for a lane; until then, `RouteFreightModel` falls back to `data/synthetic/route_freight_observations.csv`, clearly labelled `synthetic_mvp`.
 
 Recommended source references are documented in the SIH execution plan. The Kaggle
-copies of the India trade, PortWatch and Global Cargo Ships datasets are also useful
-for obtaining the named files; verify their columns against `train.py` before training.
+copy of the Global Cargo Ships dataset is also useful for obtaining the named file;
+verify its columns against `app/port_utils.py` / `app/ais_stream.py` before use.

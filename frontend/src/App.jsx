@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import Navbar from "./components/Navbar.jsx";
-import WakingBanner from "./components/WakingBanner.jsx";
+import StatusBanners from "./components/StatusBanners.jsx";
 import Landing from "./pages/Landing.jsx";
 import Predict from "./pages/Predict.jsx";
 import COAOptimizer from "./pages/COAOptimizer.jsx";
 import CompareOrigins from "./pages/CompareOrigins.jsx";
 import IdleVesselFinder from "./pages/IdleVesselFinder.jsx";
+import LiveFleetMap from "./pages/LiveFleetMap.jsx";
+import PortRadar from "./pages/PortRadar.jsx";
 import History from "./pages/History.jsx";
 import About from "./pages/About.jsx";
 import Login from "./pages/Login.jsx";
@@ -26,7 +28,7 @@ export default function App() {
       <div className="chart-grid-fine pointer-events-none fixed inset-0 z-0 opacity-70" aria-hidden="true" />
       <div className="relative z-10 flex min-h-screen flex-col">
         <Navbar />
-        <WakingBanner />
+        <StatusBanners />
         <main className="flex-1">
           <AnimatePresence mode="wait">
             <Routes location={location} key={location.pathname}>
@@ -35,6 +37,8 @@ export default function App() {
               <Route path="/coa-optimizer" element={<PageShell><COAOptimizer /></PageShell>} />
               <Route path="/compare" element={<PageShell><CompareOrigins /></PageShell>} />
               <Route path="/idle-vessel" element={<PageShell><IdleVesselFinder /></PageShell>} />
+              <Route path="/live-fleet" element={<PageShell><LiveFleetMap /></PageShell>} />
+              <Route path="/port-radar" element={<PageShell><PortRadar /></PageShell>} />
               <Route path="/history" element={<PageShell><History /></PageShell>} />
               <Route path="/about" element={<PageShell><About /></PageShell>} />
               <Route path="/login" element={<PageShell><Login /></PageShell>} />

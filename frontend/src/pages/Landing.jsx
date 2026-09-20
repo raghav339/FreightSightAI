@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight, Compass, Anchor, Activity, Radar, Package, Database, Ship, ShieldAlert, FileClock } from "lucide-react";
+import { ArrowRight, Compass, Activity, Package, Ship, ShieldAlert, FileClock } from "lucide-react";
 import { Link } from "react-router-dom";
 import HullLines from "../components/three/HullLines.jsx";
 import Stamp from "../components/ui/Stamp.jsx";
 import api from "../api/client.js";
+import useNetworkStatus from "../hooks/useNetworkStatus.js";
 
 
 const features = [
@@ -17,7 +18,7 @@ const features = [
 const pipeline = [
   ["I", "Enter shipment details", "Choose commodity, loading port, destination, cargo and shipment date in the same language a chartering desk uses."],
   ["II", "Validate and route the request", "The browser posts the shipment to the Express backend, which validates it and calls the Python forecasting service."],
-  ["III", "Generate the forecast", "Route-aware models and the market-proxy fallback produce rate, risk, feasibility and recommendation outputs."],
+  ["III", "Generate the forecast", "Route-aware models produce rate, risk, feasibility and recommendation outputs from route-freight data."],
   ["IV", "Persist the voyage record", "Forecasts can be stored in the configured backend database so history and alerts can be reviewed later."],
   ["V", "Act on one defensible view", "Review the number, assumptions, constraints and caveats before fixing tonnage or a vessel."],
 ];
@@ -36,7 +37,17 @@ function CompassPlate() {
       </div>
       <div className="relative h-[320px] sm:h-[400px] lg:h-[458px]">
         <div className="chart-contour pointer-events-none absolute inset-0 opacity-50" />
-        <HullLines className="absolute inset-0" />
+        {isSlow ? (
+          // Lite mode: this Three.js scene renders continuously and isn't
+          // load-bearing for the pitch — skip it on a slow/offline
+          // connection or a data-saver session instead of spending GPU and
+          // battery on a background flourish.
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">lite mode — animation skipped</span>
+          </div>
+        ) : (
+          <HullLines className="absolute inset-0" />
+        )}
         <div className="pointer-events-none absolute left-4 top-4 font-mono text-[9px] uppercase leading-relaxed tracking-[0.18em] text-inksoft">
           <div>frames 0–17</div>
           <div className="text-rule">waterline in vermilion</div>
@@ -108,7 +119,7 @@ function LaneStrip() {
         <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">voyage log · live tape</span>
         <span className="h-px flex-1 bg-rule/45" />
         <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">{renderStatus()}</span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">BDRY INDEX</span>
+        <span className="font-mono text-[9px] uppercase tracking-[0.19em] text-rule">ROUTE FREIGHT</span>
       </div>
       <div className="overflow-hidden">
         {rows.length ? (
@@ -143,6 +154,7 @@ function LaneStrip() {
 }
 
 export default function Landing() {
+  const { isSlow } = useNetworkStatus();
   return (
     <div>
       <section className="relative border-b border-rule/70">
@@ -164,7 +176,7 @@ export default function Landing() {
               <Link to="/compare" className="inline-flex items-center border border-ink/35 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.17em] text-ink hover:border-ink hover:bg-ink/5">explore routes</Link>
             </div>
             <dl className="mt-12 grid max-w-xl grid-cols-3 border-t border-rule/70 pt-4">
-              {[["model","Random Forest"],["trained on","BDRY · 12M rows"],["cargo","Coal · Ore · Minerals"]].map(([a,b]) => <div key={a} className="border-r border-rule/50 pr-3 last:border-0"><dt className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">{a}</dt><dd className="mt-1 font-mono text-[11px] leading-tight text-ink">{b}</dd></div>)}
+              {[["model","Random Forest"],["trained on","Synthetic route freight rates"],["cargo","Coal · Ore · Minerals"]].map(([a,b]) => <div key={a} className="border-r border-rule/50 pr-3 last:border-0"><dt className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">{a}</dt><dd className="mt-1 font-mono text-[11px] leading-tight text-ink">{b}</dd></div>)}
             </dl>
           </div>
           <motion.div initial={{ opacity: 0, scale: .98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .35, delay: .08 }} className="lg:col-span-7">
@@ -177,7 +189,7 @@ export default function Landing() {
         <div className="mx-auto grid max-w-[1240px] gap-6 px-5 py-8 lg:grid-cols-12 lg:items-end lg:gap-8 lg:px-8">
           <div className="lg:col-span-4"><span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">coverage</span><div className="mt-2 flex items-baseline gap-3"><span className="font-display text-[56px] font-semibold leading-none tabular">11</span><span className="pb-2 font-mono text-[11px] uppercase tracking-[0.16em]">loading ports</span></div><p className="mt-1 text-[13px] text-inksoft">Australia · Indonesia · Mozambique · Russia · US</p></div>
           <div className="grid gap-y-5 sm:grid-cols-3 sm:gap-x-6 lg:col-span-8">
-            {[["East-coast destinations","10","Paradip to Sagar Sandheads"],["Dataset rows","12M","BDRY + route history"],["Monitoring","24/7","High-risk results raise alerts"]].map(([a,b,c]) => <div key={a} className="border-t border-rule/60 pt-3 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0"><div className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">{a}</div><div className="mt-1 font-display text-[28px] font-semibold leading-none tabular">{b}</div><p className="mt-1 text-[12px] leading-snug text-inksoft">{c}</p></div>)}
+            {[["East-coast destinations","10","Paradip to Sagar Sandheads"],["Dataset rows","12M","Synthetic route-freight history"],["Monitoring","24/7","High-risk results raise alerts"]].map(([a,b,c]) => <div key={a} className="border-t border-rule/60 pt-3 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0"><div className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">{a}</div><div className="mt-1 font-display text-[28px] font-semibold leading-none tabular">{b}</div><p className="mt-1 text-[12px] leading-snug text-inksoft">{c}</p></div>)}
           </div>
         </div>
       </section>

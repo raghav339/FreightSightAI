@@ -31,6 +31,15 @@ only the fixture rows it created.
   nonexistent one, a real streamed `%PDF-...` document for the owner,
   anonymous downloads for forecasts made signed-out (by anyone, signed in
   or not), with a consistent English report.
+- `aisPortRadar.test.js` — `GET /api/ais/port-radar[/:port]`: param forwarding, port-name
+  encoding, unknown-port 400 pass-through (ml-service mocked).
+- `decisionBriefLogic.test.js` — Decision Brief recommendation logic on real
+  ml-service output (test/fixtures/decisionBriefFixtures.js): cheapest both-port-feasible
+  origin wins, materiality margin, wrong-commodity COA excluded, partial results flagged.
+  Pure functions; no DB or network.
+- `decisionBriefRoute.test.js` — `GET /api/forecast/:resultId/decision-brief`: PDF
+  response, server-side recompute (ml-service mocked), scenario validation, ownership 404,
+  partial ml-service failure.
 - `whatif.test.js` — `POST /api/whatif`: validates required fields,
   confirms it proxies to ml-service's `/recommend` (which runs the same
   underlying `ModelBundle.predict()` as `/forecast` — see

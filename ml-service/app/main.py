@@ -59,6 +59,7 @@ from app import port_utils
 from app.route_model import RouteModel
 from app.coa_optimizer import optimize as optimize_coa
 from app.ais_stream import collector as ais_collector, PORT_COORDS
+from app import brent
 
 app = FastAPI(title="FreightSight AI - ML Service", version="1.2.0")
 
@@ -116,6 +117,20 @@ def _warm_up_models():
         print(f"[warmup] route model warmup failed (will retry lazily on first request): {exc}")
 
 
+@app.on_event("startup")
+def start_brent_refresh():
+    """Keep the Brent cache fresh (refresh at boot, then daily). Best-effort:
+    on failure the cached copy is used, and the risk factor drops out if it
+    becomes stale. See app/brent.py."""
+    brent.start_background_refresh()
+
+
+@app.get("/brent/status")
+def brent_status():
+    """Brent cache health: as-of date, current signal, last refresh result."""
+    return brent.status()
+
+
 @app.on_event("shutdown")
 def stop_aisstream_collector():
     ais_collector.stop()
@@ -142,15 +157,12 @@ def get_route_bundle() -> RouteModel:
 
 
 def get_bundle() -> ModelBundle:
-    global _bundle, _route_bundle
+    global _bundle
     if _bundle is None:
         with _bundle_lock:
             if _bundle is None:
                 models_dir = os.path.join(os.path.dirname(__file__), "..", "models")
                 required = [
-                    "forecast_model.joblib",
-                    "risk_model.joblib",
-                    "feature_encoder.joblib",
                     "metadata.json",
                 ]
 
@@ -205,6 +217,61 @@ def ais_route_features(origin_port: str, destination_port: str, lookback_hours: 
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/ais/port-radar")
+def ais_port_radar_all(window_hours: float = 6.0, baseline_days: int = 7):
+    """Port Disruption Radar for every tracked port, most severe first.
+
+    Compares the last `window_hours` of AIS activity with the same clock
+    window over the previous `baseline_days` days. See app/port_radar.py for
+    the rules, thresholds and what the numbers do and do not mean.
+    """
+    try:
+        return ais_collector.port_radar_all(window_hours=window_hours, baseline_days=baseline_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Port radar unavailable: {exc}") from exc
+
+
+@app.get("/ais/port-radar/{port}")
+def ais_port_radar(port: str, window_hours: float = 6.0, baseline_days: int = 7):
+    """Port Disruption Radar for a single tracked port."""
+    if port not in PORT_COORDS:
+        raise HTTPException(status_code=400, detail=f"Unknown AIS port: {port}")
+    try:
+        return ais_collector.port_radar(port, window_hours=window_hours, baseline_days=baseline_days)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Port radar unavailable: {exc}") from exc
+
+
+@app.get("/ais/positions")
+def ais_positions(lookback_hours: float = 6.0, port: str | None = None, limit: int = 500):
+    """Latest known position for every vessel seen recently — one dot per
+    vessel, for a live map. See /ais/idle-vessels for a narrower
+    "has this one been sitting still" answer."""
+    if port and port not in PORT_COORDS:
+        raise HTTPException(status_code=400, detail=f"Unknown AIS port: {port}")
+    try:
+        return ais_collector.recent_positions(lookback_hours=lookback_hours, port=port, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/ais/ports")
+def ais_ports():
+    """Every port FreightSight tracks live AIS activity for, with coordinates
+    — lets the frontend draw port markers without duplicating this list."""
+    return {
+        "ports": [
+            {"name": name, "lat": lat, "lon": lon}
+            for name, (lat, lon) in PORT_COORDS.items()
+        ]
+    }
+
+
+
 @app.get("/ais/idle-vessels")
 def ais_idle_vessels(
     lookback_hours: int = 48,
@@ -254,6 +321,7 @@ def health():
 def meta():
     """Lets the Node backend populate dropdowns (routes/ports/modes/vessels) without hardcoding them."""
     bundle = get_bundle()
+    route_freight = getattr(bundle, "route_freight", None)
     return {
         "commodities": bundle.meta.get("commodities", ["Coal", "Iron Ore", "Bulk Minerals & Ores"]),
         "origins": bundle.meta["origins"],
@@ -261,8 +329,10 @@ def meta():
         "routes": bundle.meta["routes"],
         "shipment_modes": bundle.meta["shipment_modes"],
         "vessel_types": bundle.meta["vessel_types"],
-        "metrics": bundle.meta["metrics"],
-        "route_freight": (getattr(get_route_bundle(), "route_freight", None).meta if getattr(get_route_bundle(), "route_freight", None) is not None else {"status": "inactive"}),
+        # Metrics now come from the route-freight model's own held-out
+        # evaluation, not the removed BDRY forecast/risk classifier.
+        "metrics": (route_freight.meta.get("metrics", {}) if route_freight is not None else {}),
+        "route_freight": (route_freight.meta if route_freight is not None else {"status": "inactive"}),
     }
 
 
@@ -347,12 +417,11 @@ def idle_alternatives(req: IdleAlternativesRequest):
 
 @app.post("/route-forecast")
 def route_forecast(req: RouteForecastRequest):
-    """AIS-enhanced route-level market forecast.
+    """Route-level freight forecast from the synthetic route-freight model.
 
-    This endpoint is intentionally separate from /forecast because the existing
-    /forecast contract historically exposes BDRY as a freight-rate proxy. The
-    route endpoint reports the proxy and, when calibrated with a current spot
-    USD/t benchmark, an indicative route rate.
+    Raises 400 when the requested origin/destination/commodity lane has no
+    route-freight coverage — there is no longer a BDRY market-proxy fallback
+    for uncovered lanes.
     """
     bundle = get_route_bundle()
     try:
@@ -399,8 +468,9 @@ def route_freight_status():
 @app.get("/dashboard-summary")
 def dashboard_summary():
     bundle = get_bundle()
+    route_freight = getattr(bundle, "route_freight", None)
 
     return {
-        "bdry_history_12m": bundle.meta.get("bdry_history_12m", []),
-        "metrics": bundle.meta.get("metrics", {}),
+        "route_freight_history_12m": bundle.route_freight_history_12m(),
+        "metrics": (route_freight.meta.get("metrics", {}) if route_freight is not None else {}),
     }

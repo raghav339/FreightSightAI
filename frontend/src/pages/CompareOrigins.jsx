@@ -1,6 +1,8 @@
 // (2) Route/origin comparison — pick a destination, commodity, cargo, and
 // date, and rank every known loading port (Australia/US/Mozambique/Russia/
-// Indonesia) by vessel feasibility, transit time, and congestion.
+// Indonesia) by vessel feasibility (both origin and destination), then
+// total voyage time, then freight rate. Port congestion is shown on every
+// row as a supporting signal but is not itself a ranking key.
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2, AlertTriangle, Compass, Ship, CheckCircle2, XCircle } from "lucide-react";
@@ -69,7 +71,7 @@ export default function CompareOrigins() {
           {"Compare every loading port"}
         </h1>
         <p className="max-w-2xl text-sm text-slate-400">
-          {"Fix the destination, commodity, cargo, and month — see all 11 loading ports across Australia, the US, Mozambique, Russia, and Indonesia ranked by feasibility, transit time, and congestion."}
+          {"Fix the destination, commodity, cargo, and month — see all 11 loading ports across Australia, the US, Mozambique, Russia, and Indonesia ranked by feasibility, then transit time, then freight rate, with congestion shown alongside for context."}
         </p>
       </header>
 

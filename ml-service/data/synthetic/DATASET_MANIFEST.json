@@ -1,49 +1,9 @@
 {
   "directory": "synthetic",
-  "generated_at": "2026-09-05T07:57:42.764297+00:00",
+  "generated_at": "2026-09-19T10:08:46.711908+00:00",
   "generator": "ml-service/scripts/generate_data_manifest.py",
   "note": "Synthetic development/test data \u2014 not real maritime observations.",
   "files": [
-    {
-      "filename": "bdry.csv",
-      "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
-      "source_url": null,
-      "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
-      "coverage_period": {
-        "start": "2015-01-01",
-        "end": "2025-12-31",
-        "date_column": "date"
-      },
-      "schema_version": "1.0.0",
-      "row_count": 4018,
-      "column_count": 2,
-      "missingness_pct": 0.0,
-      "file_sha256_short": "9436410ca1f7569d",
-      "validation_status": "not_yet_validated",
-      "approval_status": "not_applicable_synthetic",
-      "approved_by": null,
-      "approved_at": null
-    },
-    {
-      "filename": "brent_oil.csv",
-      "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
-      "source_url": null,
-      "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
-      "coverage_period": {
-        "start": "2015-01-01",
-        "end": "2025-12-31",
-        "date_column": "date"
-      },
-      "schema_version": "1.0.0",
-      "row_count": 4018,
-      "column_count": 2,
-      "missingness_pct": 0.0,
-      "file_sha256_short": "eb3af3b69b52b748",
-      "validation_status": "not_yet_validated",
-      "approval_status": "not_applicable_synthetic",
-      "approved_by": null,
-      "approved_at": null
-    },
     {
       "filename": "global_cargo_ships.csv",
       "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
@@ -61,116 +21,16 @@
       "approved_at": null
     },
     {
-      "filename": "india_trade_2010_2021.csv",
-      "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
-      "source_url": null,
-      "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
-      "coverage_period": {
-        "start": "1970-01-01",
-        "end": "1970-01-01",
-        "date_column": "year"
-      },
-      "schema_version": "1.0.0",
-      "row_count": 36,
-      "column_count": 5,
-      "missingness_pct": 0.0,
-      "file_sha256_short": "33c2119893ffa76d",
-      "validation_status": "not_yet_validated",
-      "approval_status": "not_applicable_synthetic",
-      "approved_by": null,
-      "approved_at": null
-    },
-    {
-      "filename": "monthly_feature_table.csv",
-      "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
-      "source_url": null,
-      "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
-      "coverage_period": {
-        "start": "2016-01-01",
-        "end": "2025-11-01",
-        "date_column": "month"
-      },
-      "schema_version": "1.0.0",
-      "row_count": 3570,
-      "column_count": 34,
-      "missingness_pct": 0.148,
-      "file_sha256_short": "b72c0a67e9ac71f3",
-      "validation_status": "not_yet_validated",
-      "approval_status": "not_applicable_synthetic",
-      "approved_by": null,
-      "approved_at": null
-    },
-    {
-      "filename": "ores_minerals_trade.csv",
-      "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
-      "source_url": null,
-      "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
-      "coverage_period": {
-        "start": "1970-01-01",
-        "end": "1970-01-01",
-        "date_column": "year"
-      },
-      "schema_version": "1.0.0",
-      "row_count": 48,
-      "column_count": 5,
-      "missingness_pct": 0.0,
-      "file_sha256_short": "73a74613443e2e07",
-      "validation_status": "not_yet_validated",
-      "approval_status": "not_applicable_synthetic",
-      "approved_by": null,
-      "approved_at": null
-    },
-    {
-      "filename": "portwatch_daily.csv",
-      "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
-      "source_url": null,
-      "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
-      "coverage_period": {
-        "start": "2015-01-01",
-        "end": "2025-12-31",
-        "date_column": "date"
-      },
-      "schema_version": "1.0.0",
-      "row_count": 40180,
-      "column_count": 6,
-      "missingness_pct": 0.0,
-      "file_sha256_short": "8bc3a3c0f45ba39f",
-      "validation_status": "not_yet_validated",
-      "approval_status": "not_applicable_synthetic",
-      "approved_by": null,
-      "approved_at": null
-    },
-    {
       "filename": "route_freight_observations.csv",
       "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
       "source_url": null,
       "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
       "coverage_period": null,
       "schema_version": "1.0.0",
-      "row_count": 980,
+      "row_count": 46900,
       "column_count": 23,
       "missingness_pct": 8.696,
-      "file_sha256_short": "345cdcddc9c4c6c6",
-      "validation_status": "not_yet_validated",
-      "approval_status": "not_applicable_synthetic",
-      "approved_by": null,
-      "approved_at": null
-    },
-    {
-      "filename": "route_freight_rates.csv",
-      "source": "Synthetic \u2014 generated for FreightSight SIH26006 local development/testing.",
-      "source_url": null,
-      "retrieval_date": "n/a (synthetic \u2014 not retrieved)",
-      "coverage_period": {
-        "start": "2015-01-01",
-        "end": "2026-08-01",
-        "date_column": "date"
-      },
-      "schema_version": "1.0.0",
-      "row_count": 980,
-      "column_count": 9,
-      "missingness_pct": 0.0,
-      "file_sha256_short": "7cc7194037cce1e5",
+      "file_sha256_short": "a93117631eb9cb6e",
       "validation_status": "not_yet_validated",
       "approval_status": "not_applicable_synthetic",
       "approved_by": null,

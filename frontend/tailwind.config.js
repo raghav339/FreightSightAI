@@ -31,16 +31,10 @@ export default {
         body: ["IBM Plex Sans", "system-ui", "sans-serif"],
         mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
       },
-      backgroundImage: {
-        "chart-grid": "repeating-linear-gradient(0deg, rgb(var(--c-rule) / .15) 0 1px, transparent 1px 34px), repeating-linear-gradient(90deg, rgb(var(--c-rule) / .15) 0 1px, transparent 1px 34px)",
-        "radar-sweep": "conic-gradient(from 0deg, transparent 0deg, rgb(var(--c-kelp) / .25) 25deg, transparent 50deg)",
-      },
-      backgroundSize: { grid: "34px 34px" },
       boxShadow: {
         glow: "0 0 0 1px rgb(var(--c-vermilion) / .22), 0 8px 24px -10px rgb(var(--c-vermilion) / .22)",
-        card: "0 1px 0 rgb(255 255 255 / .5) inset",
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [],
 };
