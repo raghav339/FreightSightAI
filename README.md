@@ -292,24 +292,6 @@ The FastAPI app was also exercised directly with its test client. The following 
 - `ml-service/data/synthetic/README.md` — synthetic-data disclosure.
 
 
-### Language support (English, Bengali, Odia, Telugu, Tamil)
-
-The interface language is chosen in the navbar and remembered in the browser. The frontend sends it to the backend as `X-Lang`, and the backend forwards it to the ML service, so the analyst read, charter window, vessel rationale, congestion and COA text are generated in the same language.
-
-**Translated so far:** navbar, footer, banners, the forecast form, the forecast result page (including analyst read, charter window, vessel fit and contracting text), the port-radar notice, the decision-brief button messages, the trend chart, and all port, commodity, vessel-class, shipment-mode and risk labels. Still English: the Landing, COA, Compare, Idle vessel, Live fleet, Port radar, History, About and Login/Signup pages, the What-if and decision-simulator panels, and the backend PDF and decision-brief text. `docs/i18n_inventory.md` lists exactly what is left (currently about 800 strings).
-
-Where things live:
-- Frontend catalogs: `frontend/src/i18n/locales/<lang>.json` (`{{placeholders}}`); labels for ports/commodities/vessels use `useLabels()`.
-- ML-service catalogs: `ml-service/app/locales/<lang>.json` (Python `{placeholders}` with format specs); use `t("decision.summary", ...)` from `app/i18n.py`. Text saved in the database keeps the language it was generated in.
-- Indic scripts need their own fonts and no letter-spacing/uppercase; this is handled in `frontend/src/index.css`.
-- The translations were drafted by an AI assistant and **need review by native speakers**, especially Odia and Telugu and the decision text.
-
-Checks (run all before merging copy changes):
-- `node tools/i18n/check_catalogs.mjs`: every language has the same keys and placeholders, Latin digits only, and every `t("key")` in the code exists.
-- `node tools/i18n/smoke_render.mjs`: server-renders the main components in every language and fails on leaked keys or untranslated pages (needs `npm install` in `frontend/`).
-- `python -m pytest ml-service/tests/test_i18n.py`: ML catalog parity, placeholder safety and language plumbing.
-- `node tools/i18n/inventory.mjs` regenerates the inventory; add `--check` to fail when a new user-visible string appears that has not been inventoried.
-
 ### Route-freight model files and memory
 
 The 1,005 route/horizon models are stored as one small file per lane in `ml-service/models/lanes/` (plus `index.json`). The service loads a lane's models only when that lane is requested and keeps the 24 most recently used in memory (`ROUTE_MODEL_CACHE_LANES` to change this). Measured on this project, the service stays around 210-250 MB RSS instead of about 1.3 GB, so it fits Render's 512 MB free tier. Predictions are identical to the previous all-in-memory loading.

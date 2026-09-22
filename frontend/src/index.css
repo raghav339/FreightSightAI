@@ -72,36 +72,6 @@ select option { background:rgb(var(--c-paper)); color:rgb(var(--c-ink)); }
 .leaflet-control-attribution a { color:rgb(var(--c-ink-soft))!important; }
 .route-map-tooltip.leaflet-tooltip { background:rgb(var(--c-paper) / .96); border:1px solid rgb(var(--c-rule) / .6); color:rgb(var(--c-ink)); font-family:'IBM Plex Mono',monospace; font-size:.7rem; box-shadow:none; }
 .route-map-tooltip.leaflet-tooltip::before { display:none; }
-
-/* Darkens the plain keyless OSM raster tiles into a bridge-console chart
-   look (no paid "dark matter" tile style needed). Referenced by both
-   RouteMap.jsx and LiveFleetMap.jsx. */
-.route-map-dark-tiles { filter: invert(1) hue-rotate(182deg) brightness(0.94) contrast(1.08) saturate(0.35); }
-
-/* Leaflet's popup chrome ships pure white by default — theme it to match
-   the surrounding chart-console styling instead of breaking the palette. */
-.leaflet-popup-content-wrapper { background:rgb(var(--c-paper) / .97); color:rgb(var(--c-ink)); border:1px solid rgb(var(--c-rule) / .55); border-radius:10px; box-shadow:0 10px 28px -12px rgb(0 0 0 / .55); }
-.leaflet-popup-content { margin:11px 14px; }
-.leaflet-popup-tip { background:rgb(var(--c-paper) / .97); border:1px solid rgb(var(--c-rule) / .55); box-shadow:none; }
-.leaflet-popup-close-button { color:rgb(var(--c-rule))!important; }
-
-/* Frames a live-tracking map (Live Fleet page) with a faint radar-style
-   vignette so it reads as an instrument, not a flat embedded widget. */
-.fs-radar-frame { position:relative; }
-.fs-radar-frame::after {
-  content:""; position:absolute; inset:0; pointer-events:none; z-index:500;
-  box-shadow: inset 0 0 90px 10px rgb(var(--c-ink) / .55);
-  background: radial-gradient(circle at 50% 50%, transparent 45%, rgb(var(--c-ink) / .18) 100%);
-}
-@keyframes radar-sweep { to { transform: rotate(360deg); } }
-.fs-radar-sweep { position:absolute; inset:0; pointer-events:none; z-index:499; overflow:hidden; opacity:.5; }
-.fs-radar-sweep::before {
-  content:""; position:absolute; top:50%; left:50%; width:220%; height:220%;
-  margin:-110% 0 0 -110%; transform-origin:50% 50%;
-  background: conic-gradient(from 0deg, rgb(var(--c-kelp) / .28) 0deg, transparent 26deg, transparent 360deg);
-  animation: radar-sweep 7s linear infinite;
-}
-@media (prefers-reduced-motion: reduce) { .fs-radar-sweep::before { animation:none; } }
 path.route-course-line { animation:dash-flow 6s linear infinite; }
 
 @keyframes dash-flow { to { stroke-dashoffset:-200; } }
@@ -233,36 +203,3 @@ path.route-course-line { animation:dash-flow 6s linear infinite; }
 
 /* Keep the blueprint panel itself clear; do not blur/soften its canvas layer. */
 .hull-lines-canvas + * { position: relative; }
-
-/* ------------------------------------------------------------------
-   Indic scripts (Bengali, Odia, Telugu, Tamil)
-   - The Latin display/mono faces have no Indic glyphs: use Noto Sans for the script and
-     keep IBM Plex as the fallback so digits and Latin acronyms (LOA, DWT, COA) still render.
-   - These scripts have no upper case and their conjuncts break under letter-spacing, so the
-     wide-tracked uppercase labels used in English are switched off.
-   - Indic glyphs are taller: give text more line height and stop tight leading from clipping them.
-   ------------------------------------------------------------------ */
-html:lang(bn) { --indic-font: 'Noto Sans Bengali'; }
-html:lang(or) { --indic-font: 'Noto Sans Oriya'; }
-html:lang(te) { --indic-font: 'Noto Sans Telugu'; }
-html:lang(ta) { --indic-font: 'Noto Sans Tamil'; }
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) body,
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) button,
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) input,
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) select,
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) textarea,
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) [class*="font-"],
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) [class^="fs-"],
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) [class*=" fs-"] {
-  font-family: var(--indic-font), 'IBM Plex Sans', system-ui, sans-serif !important;
-}
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) * {
-  letter-spacing: normal !important;
-  text-transform: none !important;
-}
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) body { line-height: 1.7; }
-html:is(:lang(bn), :lang(or), :lang(te), :lang(ta)) :is(h1, h2, h3, h4, [class*="leading-"], [class*="-title"], [class*="__text"], [class*="-value"]) {
-  line-height: 1.5 !important;
-}
-/* keep the language picker readable in every script */
-.lang-switcher { font-family: 'Noto Sans Bengali','Noto Sans Oriya','Noto Sans Telugu','Noto Sans Tamil','IBM Plex Sans',system-ui,sans-serif !important; letter-spacing: normal !important; text-transform: none !important; }

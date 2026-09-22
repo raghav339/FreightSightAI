@@ -4,7 +4,6 @@ from pathlib import Path
 import pandas as pd
 from app import port_utils
 from app import brent
-from app.i18n import t
 from route_freight_model import RouteFreightModel
 try:
     # AIS is a live, best-effort enhancement. If aisstream isn't
@@ -205,8 +204,10 @@ class ModelBundle:
 
         if route_result is None or not route_result.get("forecasts") or route_result.get("model_beats_baseline") is not True:
             raise ValueError(
-                t("errors.no_route_forecast", origin=origin_port, destination=destination_port,
-                  commodity_part=f" ({commodity})" if commodity else "")
+                f"No synthetic route-freight forecast is available for {origin_port} -> {destination_port}"
+                + (f" ({commodity})" if commodity else "")
+                + ". This lane is not covered by the route-freight dataset, or its held-out "
+                "evaluation did not beat the naive-persistence baseline."
             )
 
         route_h1 = route_result["forecasts"][0]
@@ -215,11 +216,11 @@ class ModelBundle:
         pct = (forecast - prev) / prev if prev else 0.0
 
         forecast_type = "synthetic_route" if route_result.get("data_mode") == "synthetic_mvp" else "route_specific"
-        forecast_basis = t("forecast.basis_synthetic") if forecast_type == "synthetic_route" else t("forecast.basis_verified")
+        forecast_basis = "Synthetic route freight rate (MVP)" if forecast_type == "synthetic_route" else "Verified route freight"
         forecast_source = (
-            t("forecast.source_synthetic")
+            "route_freight_observations.csv (synthetic MVP development dataset)"
             if forecast_type == "synthetic_route"
-            else t("forecast.source_verified")
+            else "Verified route freight observations"
         )
         def _curve_point_confidence(item: dict) -> float:
             """Ensemble-spread-based confidence for one forecast point: a
@@ -450,7 +451,7 @@ class ModelBundle:
             "route_model_beats_baseline": route_result.get("model_beats_baseline"),
             "route_model_fallback_note": None,
             "latest_feature_date": route_result["forecasts"][0].get("feature_source_date"),
-            "risk_reliability": t("forecast.risk_reliability"),
+            "risk_reliability": "heuristic (rule-based, not a trained classifier) — see risk_factors",
             "recommended_vessel_reason": recommended_vessel_reason,
             "port_data_warning": build_port_data_warning() if (origin_port_info or {}).get("data_status") or (dest_port_info or {}).get("data_status") else None,
             "estimated_transit_days": transit_days,
@@ -494,7 +495,7 @@ class ModelBundle:
 
             origin_info = port_utils.get_port(origin)
             if origin_info is None:
-                return ("error", {"origin_port": origin, "error": t("compare.no_port_data")})
+                return ("error", {"origin_port": origin, "error": "No port infrastructure data available for this origin."})
             origin_port_ok = None
             if pred.get("recommended_vessel_type"):
                 origin_port_ok = port_utils.vessel_fits_port(pred["recommended_vessel_type"], origin_info)
@@ -514,7 +515,7 @@ class ModelBundle:
                     ais_congestion = {
                         "available": True, "congestion_index": o["congestion_index"],
                         "unique_vessels": o["unique_vessels"], "avg_sog_kn": o["avg_sog_kn"],
-                        "lookback_hours": 24, "source": t("compare.ais_source"),
+                        "lookback_hours": 24, "source": "AISStream live AIS feed (this origin only, last 24h)",
                     }
                 except Exception:
                     pass
@@ -527,7 +528,7 @@ class ModelBundle:
                 "recommended_vessel_type": pred["recommended_vessel_type"],
                 "origin_port_vessel_ok": origin_port_ok,
                 "origin_port_congestion": (origin_info or {}).get("typical_congestion"),
-                "origin_port_congestion_source": t("compare.congestion_source_static"),
+                "origin_port_congestion_source": "static port_infra.json rating (typical_congestion)",
                 "ais_congestion": ais_congestion,
                 "distance_nm": distance_nm,
                 "estimated_transit_days": transit_days,
@@ -547,16 +548,7 @@ class ModelBundle:
             })
 
         results, errors = [], []
-        # One worker per origin (not capped at 6): origins is the small,
-        # fixed port list from metadata.json (currently 11), each doing
-        # mostly I/O-bound work per candidate (a lane joblib.load on a cache
-        # miss, an optional live AIS lookup) plus a single sklearn .predict()
-        # call. Capping this below the origin count serialized part of the
-        # fan-out for no memory/CPU benefit at this list size; now that
-        # _LaneStore.get_lane() no longer holds its lock across the disk
-        # read (see route_freight_model.py), letting every origin's thread
-        # run at once is what actually lets those loads happen in parallel.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(origins) or 1) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(origins) or 1)) as pool:
             for kind, row in pool.map(build_row, origins):
                 (results if kind == "ok" else errors).append(row)
 
@@ -590,19 +582,7 @@ class ModelBundle:
         candidate's rate now comes directly from route_freight.predict();
         candidates with no route-freight coverage for that lane/commodity
         are skipped and reported in `errors` instead of falling back.
-
-        Each (origin, commodity) pair is its own lane and used to run
-        sequentially — up to ~11 origins x ~3 commodities, each doing a
-        per-lane joblib.load() on a cache miss plus a sklearn .predict()
-        call (see route_freight_model._LaneStore.get_lane()), one after
-        another. That's the same "N independent lane loads/predicts"
-        shape compare_origins() already parallelizes across origins with a
-        thread pool, just with an extra commodity dimension here, so it
-        gets the same fix: fan the (origin, commodity) pairs out across
-        threads instead of looping over them in series.
         """
-        import concurrent.futures
-
         origins = [
             origin for origin in self.meta.get("origins", [])
             if str(origin).strip().lower() != str(req.current_port).strip().lower()
@@ -623,65 +603,47 @@ class ModelBundle:
                 continue
             distance_nm = port_utils.get_distance_nm(origin, req.current_port)
             ballast_days = port_utils.estimate_transit_days(origin, req.current_port)
-            # feasible_vessels_both_ports() depends only on cargo_weight,
-            # origin_info and dest_info — none of which vary by commodity —
-            # so it's computed once per origin here instead of once per
-            # (origin, commodity) task below (previously re-run identically
-            # for every commodity of the same origin).
-            try:
-                feasible_candidates, _rejected = port_utils.feasible_vessels_both_ports(cargo_weight, origin_info, dest_info)
-            except Exception:
-                feasible_candidates = []
-            jobs.append((origin, origin_info, distance_nm, ballast_days, feasible_candidates))
-
-        tasks = [
-            (origin, origin_info, distance_nm, ballast_days, feasible_candidates, commodity)
-            for origin, origin_info, distance_nm, ballast_days, feasible_candidates in jobs
-            for commodity in commodities
-        ]
-
-        def build_candidate(task):
-            origin, origin_info, distance_nm, ballast_days, feasible_candidates, commodity = task
-            try:
-                core = self._route_forecast(origin, req.current_port, commodity, shipment_date)
-            except ValueError as exc:
-                return ("error", {"origin_port": origin, "commodity": commodity, "error": str(exc)})
-
-            rate = core["forecast"]
-            risk = core["risk"]
-
-            recommended_vessel = None
-            if feasible_candidates:
-                try:
-                    recommendation = port_utils.recommend_vessel(
-                        cargo_weight,
-                        ((dest_info or {}).get("cargo_depth_m") or (dest_info or {}).get("channel_depth_m") or (dest_info or {}).get("max_draft_m")),
-                        port_name=req.current_port, origin_port_name=origin,
-                        predicted_rate=rate, previous_rate=core["prev"],
-                    )
-                    recommended_vessel = recommendation.get("recommended_vessel")
-                except Exception:
-                    recommended_vessel = None
-
-            score = rate / (1 + (ballast_days or 0) / 30.0)
-            return ("ok", {
-                "origin_port": origin,
-                "commodity": commodity,
-                "predicted_freight_rate_usd_per_ton": round(float(rate), 2),
-                "risk_label": risk,
-                "recommended_vessel_type": recommended_vessel or vessel_type,
-                "ballast_distance_nm": distance_nm,
-                "estimated_ballast_days": ballast_days,
-                "score": round(float(score), 3),
-                "note": build_idle_reposition_note(origin=origin, commodity=commodity, current_port=req.current_port),
-            })
+            jobs.append((origin, origin_info, distance_nm, ballast_days))
 
         candidates = []
         errors = []
-        if tasks:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(tasks)) as pool:
-                for kind, row in pool.map(build_candidate, tasks):
-                    (candidates if kind == "ok" else errors).append(row)
+        for origin, origin_info, distance_nm, ballast_days in jobs:
+            for commodity in commodities:
+                try:
+                    core = self._route_forecast(origin, req.current_port, commodity, shipment_date)
+                except ValueError as exc:
+                    errors.append({"origin_port": origin, "commodity": commodity, "error": str(exc)})
+                    continue
+
+                rate = core["forecast"]
+                risk = core["risk"]
+
+                recommended_vessel = None
+                try:
+                    feasible_candidates, _rejected = port_utils.feasible_vessels_both_ports(cargo_weight, origin_info, dest_info)
+                    if feasible_candidates:
+                        recommendation = port_utils.recommend_vessel(
+                            cargo_weight,
+                            ((dest_info or {}).get("cargo_depth_m") or (dest_info or {}).get("channel_depth_m") or (dest_info or {}).get("max_draft_m")),
+                            port_name=req.current_port, origin_port_name=origin,
+                            predicted_rate=rate, previous_rate=core["prev"],
+                        )
+                        recommended_vessel = recommendation.get("recommended_vessel")
+                except Exception:
+                    recommended_vessel = None
+
+                score = rate / (1 + (ballast_days or 0) / 30.0)
+                candidates.append({
+                    "origin_port": origin,
+                    "commodity": commodity,
+                    "predicted_freight_rate_usd_per_ton": round(float(rate), 2),
+                    "risk_label": risk,
+                    "recommended_vessel_type": recommended_vessel or vessel_type,
+                    "ballast_distance_nm": distance_nm,
+                    "estimated_ballast_days": ballast_days,
+                    "score": round(float(score), 3),
+                    "note": build_idle_reposition_note(origin=origin, commodity=commodity, current_port=req.current_port),
+                })
 
         candidates.sort(key=lambda c: c["score"], reverse=True)
         top = candidates[:5]

@@ -34,14 +34,6 @@ export default {
       boxShadow: {
         glow: "0 0 0 1px rgb(var(--c-vermilion) / .22), 0 8px 24px -10px rgb(var(--c-vermilion) / .22)",
       },
-      keyframes: {
-        "ping-slow": {
-          "75%, 100%": { transform: "scale(2.4)", opacity: "0" },
-        },
-      },
-      animation: {
-        "ping-slow": "ping-slow 2.6s cubic-bezier(0, 0, 0.2, 1) infinite",
-      },
     },
   },
   plugins: [],

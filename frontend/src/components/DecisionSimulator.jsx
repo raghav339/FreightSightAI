@@ -15,7 +15,7 @@
 // would burn that budget fast for no benefit.
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, GitCompareArrows, TrendingDown, TrendingUp, SlidersHorizontal } from "lucide-react";
+import { Loader2, GitCompareArrows, TrendingDown, TrendingUp } from "lucide-react";
 import api from "../api/client.js";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card.jsx";
 import { Badge } from "./ui/badge.jsx";
@@ -136,23 +136,12 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
             <div className="flex flex-col">
               <CardTitle className="text-lg">Decision simulator — what should procurement do?</CardTitle>
               <span className="text-xs text-slate-500">
-                {`Compares staying on this lane against a multi-voyage COA and the best alternative loading port, on ${baseRequest.origin_port}–${baseRequest.destination_port}.`}
+                {`For ${cargo.toLocaleString()} t${duration ? `, ${duration} mo` : ", spot"} on ${baseRequest.origin_port}–${baseRequest.destination_port} — compares staying on this lane against a multi-voyage COA and the best alternative loading port.`}
               </span>
             </div>
           </div>
           <DecisionBriefButton recordId={forecast.record_id} cargo={cargo} duration={duration} />
         </CardHeader>
-
-        <div className="mx-5 flex flex-wrap items-center gap-2 rounded-lg border border-signal/25 bg-signal/[0.06] px-3 py-2 text-xs text-slate-300">
-          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-signal" />
-          <span>
-            Using the <a href="#whatif-panel" className="font-medium text-signal underline decoration-dotted underline-offset-2">What-if scenario</a> above:{" "}
-            <span className="font-mono font-semibold text-paper-50">{cargo.toLocaleString()} t</span>
-            {" · "}
-            <span className="font-mono font-semibold text-paper-50">{duration ? `${duration} mo` : "spot"}</span>.
-            Drag those sliders to re-price this comparison.
-          </span>
-        </div>
 
         <CardContent className="flex flex-col gap-5 pt-2">
           <Button type="button" size="sm" variant="outline" onClick={run} disabled={status === "loading"} className="self-start gap-2">
@@ -224,7 +213,7 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
                   <span className="text-port">{alt.error}</span>
                 ) : altBest ? (
                   <>
-                    <span>Rate: ${Number(altBest.predicted_freight_rate_usd_per_ton).toFixed(2)}/t · Risk: {altBest.risk_label}</span>
+                    <span>Rate: ${altBest.predicted_freight_rate_usd_per_ton}/t · Risk: {altBest.risk_label}</span>
                     <span>{altBest.total_voyage_days != null ? `${altBest.total_voyage_days}d total voyage` : "—"}</span>
                     <span>Vessel-feasible at both ports</span>
                   </>

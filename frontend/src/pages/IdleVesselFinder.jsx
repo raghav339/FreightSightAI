@@ -318,7 +318,7 @@ export default function IdleVesselFinder() {
                         {a.risk_label}
                       </Badge>
                       <span className="font-mono text-xs text-slate-400">
-                        ~{a.estimated_ballast_days}d ballast · ${a.predicted_freight_rate_usd_per_ton?.toFixed(2)}/t
+                        ~{a.estimated_ballast_days}d ballast · ${a.predicted_freight_rate_usd_per_ton?.toFixed(2)}
                       </span>
                     </div>
                   </div>

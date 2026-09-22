@@ -4,8 +4,7 @@
 // of the app: if AIS isn't configured or a window is empty, say so plainly
 // instead of showing a misleadingly empty-but-silent map.
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, Marker, Tooltip, Popup, useMap } from "react-leaflet";
-import L from "leaflet";
+import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { Radar, RefreshCw, AlertTriangle, Anchor } from "lucide-react";
 import api from "../api/client.js";
@@ -16,33 +15,6 @@ import { Button } from "../components/ui/button.jsx";
 const STATUS_COLOR = { underway: "#2FBF71", slow: "#E8A33D", stopped: "#D9483C" };
 const STATUS_LABEL = { underway: "Underway", slow: "Slow / maneuvering", stopped: "Stopped / anchored" };
 const PORT_COLOR = "#FFB020";
-
-// Same bridge-console glow marker language as the route map's port pins:
-// a soft pulsing halo behind a solid core, built as a divIcon so the pulse
-// is a real CSS animation instead of a flat vector dot. Vessels underway
-// get the pulse (it reads as "live"); slow/stopped vessels get a calmer,
-// non-pulsing ring so the map isn't uniformly busy.
-function glowIcon(color, { pulse = false, size = 14 } = {}) {
-  const half = size / 2;
-  return L.divIcon({
-    className: "",
-    html: `
-      <span class="relative flex" style="width:${size}px;height:${size}px">
-        ${pulse ? `<span class="absolute inline-flex h-full w-full animate-ping-slow rounded-full" style="background:${color};opacity:.55"></span>` : ""}
-        <span class="relative inline-flex rounded-full border-2" style="width:${size}px;height:${size}px;background:${color};border-color:#0B1017;box-shadow:0 0 6px 1px ${color}99"></span>
-      </span>`,
-    iconSize: [size, size],
-    iconAnchor: [half, half],
-  });
-}
-
-const PORT_ICON = glowIcon(PORT_COLOR, { size: 12 });
-const VESSEL_ICON = {
-  underway: glowIcon(STATUS_COLOR.underway, { pulse: true, size: 13 }),
-  slow: glowIcon(STATUS_COLOR.slow, { size: 13 }),
-  stopped: glowIcon(STATUS_COLOR.stopped, { size: 13 }),
-  default: glowIcon("#8892A6", { size: 13 }),
-};
 
 function StatBox({ label, value, colorClass }) {
   return (
@@ -252,8 +224,7 @@ export default function LiveFleetMap() {
               <StatBox label="Stopped" value={vessels.filter((v) => v.status === "stopped").length} colorClass="text-vermilion" />
             </div>
 
-            <div className="fs-radar-frame h-[520px] w-full overflow-hidden rounded-xl border border-hull-600/60">
-              <div className="fs-radar-sweep" />
+            <div className="h-[520px] w-full overflow-hidden rounded-xl border border-hull-600/60">
               <MapContainer
                 center={[10, 90]}
                 zoom={3}
@@ -271,17 +242,27 @@ export default function LiveFleetMap() {
                 />
 
                 {ports.map((p) => (
-                  <Marker key={p.name} position={[p.lat, p.lon]} icon={PORT_ICON}>
+                  <CircleMarker
+                    key={p.name}
+                    center={[p.lat, p.lon]}
+                    radius={5}
+                    pathOptions={{ color: PORT_COLOR, weight: 1.5, fillColor: PORT_COLOR, fillOpacity: 0.45 }}
+                  >
                     <Tooltip direction="top" offset={[0, -6]} opacity={1} className="route-map-tooltip">
                       {p.name} · port
                     </Tooltip>
-                  </Marker>
+                  </CircleMarker>
                 ))}
 
                 {vessels.map((v) => {
-                  const icon = VESSEL_ICON[v.status] || VESSEL_ICON.default;
+                  const color = STATUS_COLOR[v.status] || "#8892A6";
                   return (
-                    <Marker key={v.mmsi} position={[v.lat, v.lon]} icon={icon}>
+                    <CircleMarker
+                      key={v.mmsi}
+                      center={[v.lat, v.lon]}
+                      radius={5}
+                      pathOptions={{ color, weight: 1.5, fillColor: color, fillOpacity: 0.9 }}
+                    >
                       <Popup>
                         <div className="min-w-[180px] font-mono text-xs leading-relaxed">
                           <div className="font-semibold">{v.ship_name || "Unnamed vessel"}</div>
@@ -297,7 +278,7 @@ export default function LiveFleetMap() {
                           </div>
                         </div>
                       </Popup>
-                    </Marker>
+                    </CircleMarker>
                   );
                 })}
 

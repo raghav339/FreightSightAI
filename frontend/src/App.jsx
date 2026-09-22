@@ -1,4 +1,3 @@
-import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -21,7 +20,6 @@ function PageShell({ children }) {
 }
 
 export default function App() {
-  const { t } = useTranslation();
   const location = useLocation();
   useEffect(() => { window.scrollTo({ top: 0, behavior: "auto" }); }, [location.pathname]);
 
@@ -50,7 +48,7 @@ export default function App() {
         </main>
         <footer className="border-t border-rule/70 bg-parchment">
           <div className="mx-auto flex max-w-[1240px] flex-col gap-2 px-5 py-5 sm:flex-row sm:items-center sm:justify-between lg:px-8">
-            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">{t("footer.line")}</span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-rule">FreightSight AI · SIH26006 · bulk cargo chartering console</span>
           </div>
         </footer>
       </div>

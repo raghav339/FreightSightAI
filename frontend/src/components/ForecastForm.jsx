@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { AlertTriangle, Compass, Loader2, RotateCw, WifiOff } from "lucide-react";
-import { useTranslation } from "react-i18next";
 import api from "../api/client.js";
-import { useLabels } from "../i18n/labels.js";
 import { Field, Input, Select } from "./ui/field.jsx";
 import { Button } from "./ui/button.jsx";
 import useNetworkStatus from "../hooks/useNetworkStatus.js";
@@ -36,8 +34,6 @@ const MAX_META_RETRIES = 5;
 const META_RETRY_BASE_MS = 1500;
 
 export default function ForecastForm({ onResult }) {
-  const { t, i18n } = useTranslation();
-  const L = useLabels();
   const [meta, setMeta] = useState({
     commodities: ["Coal", "Iron Ore", "Bulk Minerals & Ores"],
     origins: [],
@@ -74,7 +70,7 @@ export default function ForecastForm({ onResult }) {
         return true;
       }
       if (errorIfNone) {
-        setMetaError("form.errors.routeOptions");
+        setMetaError("Could not load route options. Is the ML service running?");
         setMetaLoading(false);
       }
       return false;
@@ -142,7 +138,7 @@ export default function ForecastForm({ onResult }) {
     e.preventDefault();
     setError(null);
     if (form.total_program_tons && Number(form.total_program_tons) < Number(form.cargo_weight_tons)) {
-      setError(t("form.errors.totalLessThanCargo"));
+      setError("Total program tonnage can't be less than the cargo weight per lift.");
       return;
     }
     const payload = {
@@ -158,7 +154,7 @@ export default function ForecastForm({ onResult }) {
 
     if (!navigator.onLine) {
       if (!tryCacheFallback(payload)) {
-        setError(t("form.errors.offlineNoCache"));
+        setError("You're offline and no cached forecast exists yet for this route, commodity and cargo weight.");
       }
       return;
     }
@@ -171,12 +167,12 @@ export default function ForecastForm({ onResult }) {
     } catch (err) {
       const isNetworkFailure = !err.response;
       if (isNetworkFailure && tryCacheFallback(payload)) return;
-      const serverCode = err.response?.data?.code;
       setError(
-        (serverCode === "ml_starting" ? t("form.errors.mlStarting") : null) ||
         err.response?.data?.error ||
         (Array.isArray(err.response?.data?.details) ? err.response.data.details.join(", ") : null) ||
-        (isNetworkFailure ? t("form.errors.unreachable") : t("form.errors.failed"))
+        (isNetworkFailure
+          ? "Could not reach the forecasting service, and no cached forecast exists yet for this route."
+          : "Forecast request failed. Is the ML service running?")
       );
     } finally {
       setLoading(false);
@@ -194,88 +190,88 @@ export default function ForecastForm({ onResult }) {
       className="shipment-sheet"
     >
       <div className="shipment-sheet__topline">
-        <div className="fs-kicker">{t("form.shipmentDetails")}</div>
+        <div className="fs-kicker">Shipment details</div>
       </div>
 
       <div className="shipment-sheet__grid">
-        <Field label={t("form.commodity")}>
+        <Field label="Commodity">
           <Select required value={form.commodity} onChange={(e) => update("commodity", e.target.value)}>
-            <option value="">{t("form.selectCommodity")}</option>
-            {meta.commodities.map((c) => <option key={c} value={c}>{L.commodity(c)}</option>)}
+            <option value="">Select commodity</option>
+            {meta.commodities.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
         </Field>
-        <Field label={t("form.originPort")}>
+        <Field label="Origin port">
           <Select required value={form.origin_port} onChange={(e) => update("origin_port", e.target.value)}>
-            <option value="">{t("form.selectOrigin")}</option>
-            {meta.origins.map((o) => <option key={o} value={o}>{L.port(o)}</option>)}
+            <option value="">Select origin</option>
+            {meta.origins.map((o) => <option key={o} value={o}>{o}</option>)}
           </Select>
         </Field>
-        <Field label={t("form.destinationPort")}>
+        <Field label="Destination port">
           <Select required value={form.destination_port} onChange={(e) => update("destination_port", e.target.value)}>
-            <option value="">{t("form.selectDestination")}</option>
-            {meta.destinations.map((d) => <option key={d} value={d}>{L.port(d)}</option>)}
+            <option value="">Select destination</option>
+            {meta.destinations.map((d) => <option key={d} value={d}>{d}</option>)}
           </Select>
         </Field>
-        <Field label={t("form.shipmentDate")}>
-          <Input type="date" lang={i18n.language} required value={form.shipment_date} onChange={(e) => update("shipment_date", e.target.value)} />
+        <Field label="Shipment date">
+          <Input type="date" required value={form.shipment_date} onChange={(e) => update("shipment_date", e.target.value)} />
         </Field>
 
-        <Field label={t("form.cargoWeight")} hint={t("form.cargoWeightHint")}>
-          <Input type="number" min="1" step="0.1" required placeholder={t("form.cargoWeightPlaceholder")} value={form.cargo_weight_tons} onChange={(e) => update("cargo_weight_tons", e.target.value)} />
+        <Field label="Cargo weight" hint="tonnes">
+          <Input type="number" min="1" step="0.1" required placeholder="Enter weight" value={form.cargo_weight_tons} onChange={(e) => update("cargo_weight_tons", e.target.value)} />
         </Field>
-        <Field label={t("form.shipmentMode")}>
+        <Field label="Shipment mode">
           <Select value={form.shipment_mode} onChange={(e) => update("shipment_mode", e.target.value)}>
-            <option value="">{t("form.selectMode")}</option>
-            {meta.shipment_modes.map((m) => <option key={m} value={m}>{L.mode(m)}</option>)}
+            <option value="">Select mode</option>
+            {meta.shipment_modes.map((m) => <option key={m} value={m}>{m}</option>)}
           </Select>
         </Field>
-        <Field label={t("form.vesselClass")}>
+        <Field label="Vessel class">
           <Select value={form.vessel_type} onChange={(e) => update("vessel_type", e.target.value)}>
-            <option value="">{t("form.autoRecommend")}</option>
-            {vesselTypes.map((v) => <option key={v} value={v}>{L.vessel(v)}</option>)}
+            <option value="">Auto-recommend</option>
+            {vesselTypes.map((v) => <option key={v} value={v}>{v}</option>)}
           </Select>
         </Field>
-        <Field label={t("form.contractDuration")} hint={t("form.contractDurationHint")}>
-          <Input type="number" min="0" step="1" placeholder={t("form.singleVoyage")} value={form.contract_duration_months} onChange={(e) => update("contract_duration_months", e.target.value)} />
+        <Field label="Contract duration" hint="months · COA">
+          <Input type="number" min="0" step="1" placeholder="single voyage" value={form.contract_duration_months} onChange={(e) => update("contract_duration_months", e.target.value)} />
         </Field>
       </div>
 
       <details className="shipment-sheet__advanced">
-        <summary>{t("form.additional")}</summary>
+        <summary>Additional planning inputs</summary>
         <div className="shipment-sheet__advanced-grid">
-          <Field label={t("form.cargoVolume")} hint={t("form.hintOptionalCbm")}><Input type="number" min="0" step="0.1" value={form.cargo_volume_cbm} onChange={(e) => update("cargo_volume_cbm", e.target.value)} /></Field>
-          <Field label={t("form.distance")} hint={t("form.hintOptionalKm")}><Input type="number" min="0" step="1" value={form.distance_km} onChange={(e) => update("distance_km", e.target.value)} /></Field>
-          <Field label={t("form.expectedDelay")} hint={t("form.hintOptionalDays")}><Input type="number" min="0" step="0.1" value={form.delay_days} onChange={(e) => update("delay_days", e.target.value)} /></Field>
-          <Field label={t("form.totalProgram")} hint={t("form.hintOptionalCoa")} error={totalTonsInvalid ? t("form.totalMin", { tons: form.cargo_weight_tons }) : null}><Input type="number" min={form.cargo_weight_tons || 0} step="100" value={form.total_program_tons} onChange={(e) => update("total_program_tons", e.target.value)} /></Field>
+          <Field label="Cargo volume" hint="optional · cbm"><Input type="number" min="0" step="0.1" value={form.cargo_volume_cbm} onChange={(e) => update("cargo_volume_cbm", e.target.value)} /></Field>
+          <Field label="Distance" hint="optional · km"><Input type="number" min="0" step="1" value={form.distance_km} onChange={(e) => update("distance_km", e.target.value)} /></Field>
+          <Field label="Expected delay" hint="optional · days"><Input type="number" min="0" step="0.1" value={form.delay_days} onChange={(e) => update("delay_days", e.target.value)} /></Field>
+          <Field label="Total program tonnage" hint="optional · COA" error={totalTonsInvalid ? `Must be at least ${form.cargo_weight_tons} tons.` : null}><Input type="number" min={form.cargo_weight_tons || 0} step="100" value={form.total_program_tons} onChange={(e) => update("total_program_tons", e.target.value)} /></Field>
         </div>
       </details>
 
       {metaLoading && !metaError && (
-        <div className="shipment-sheet__service-note"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("form.connecting")}</div>
+        <div className="shipment-sheet__service-note"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting to the forecasting service…</div>
       )}
       {metaOffline && !metaError && (
         <div className="shipment-sheet__service-note">
           <WifiOff className="h-3.5 w-3.5" />
-          <span>{t("form.offlineNote")}</span>
+          <span>Offline — using the route list saved from your last connected session. Submitting will look up a cached forecast for this route.</span>
         </div>
       )}
       {metaError && (
         <div className="shipment-sheet__service-note shipment-sheet__service-note--warn">
           <AlertTriangle className="h-3.5 w-3.5" />
-          <span>{t(metaError)}</span>
+          <span>{metaError}</span>
           <button type="button" className="ml-auto inline-flex items-center gap-1 underline decoration-dotted underline-offset-2" onClick={() => setRetryToken((t) => t + 1)}>
-            <RotateCw className="h-3 w-3" /> {t("common.retry")}
+            <RotateCw className="h-3 w-3" /> Retry
           </button>
         </div>
       )}
 
       <div className="shipment-sheet__bottom">
         <p className="shipment-sheet__hint">
-          {t("form.hint")}
+          Add a contract duration if you are planning a short/mid-term Contract of Affreightment across multiple voyages instead of a one-off spot fixture.
         </p>
         {error && <div className="shipment-sheet__error"><AlertTriangle className="h-3.5 w-3.5" /> {error}</div>}
         <Button type="submit" disabled={loading} className="shipment-sheet__submit">
-          <Compass className="h-3.5 w-3.5" /> {loading ? t("form.submitting") : t("form.submit")}
+          <Compass className="h-3.5 w-3.5" /> {loading ? "Run forecast…" : "Run forecast"}
         </Button>
       </div>
     </motion.form>

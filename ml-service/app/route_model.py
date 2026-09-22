@@ -17,7 +17,6 @@ the route-freight dataset yet.
 """
 from __future__ import annotations
 from pathlib import Path
-from .i18n import t
 
 try:
     from route_freight_model import RouteFreightModel
@@ -54,8 +53,10 @@ class RouteModel:
 
         if direct is None:
             raise ValueError(
-                t("errors.no_route_forecast", origin=origin, destination=destination,
-                  commodity_part=f" ({commodity})" if commodity else "")
+                f"No synthetic route-freight forecast is available for {origin} -> {destination}"
+                + (f" ({commodity})" if commodity else "")
+                + ". This lane is not covered by the route-freight dataset, or its held-out "
+                "evaluation did not beat the naive-persistence baseline."
             )
 
         direct["current_spot_rate_usd_per_ton"] = current_spot_rate_usd_per_ton

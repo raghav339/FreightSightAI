@@ -57,7 +57,7 @@ export default function HistoryTable({ rows }) {
                   {Number(r.cargo_weight_tons).toLocaleString()}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-semibold text-signal">
-                  ${Number(r.predicted_freight_rate_usd_per_ton).toFixed(2)}/t
+                  ${Number(r.predicted_freight_rate_usd_per_ton).toFixed(2)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3">
                   <Badge variant={RISK_VARIANT[r.risk_label] || "neutral"}>{r.risk_label?.toUpperCase()}</Badge>

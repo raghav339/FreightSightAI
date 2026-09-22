@@ -134,7 +134,7 @@ function LaneStrip() {
                 <div key={`${voyage.result_id ?? voyage.route}-${index}`} className="flex shrink-0 items-center gap-4 border-r border-rule/50 px-6 py-3">
                   <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-ink">{voyage.route}</span>
                   <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-rule">{voyage.commodity || "—"}</span>
-                  <span className="font-mono text-[11px] tabular text-ink">${Number(voyage.predicted_freight_rate_usd_per_ton).toFixed(2)}/t</span>
+                  <span className="font-mono text-[11px] tabular text-ink">{Number(voyage.predicted_freight_rate_usd_per_ton).toFixed(2)}</span>
                   <span className={`font-mono text-[9px] uppercase tracking-[0.17em] ${riskClass}`}>{risk}</span>
                 </div>
               );
