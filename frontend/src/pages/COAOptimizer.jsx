@@ -1,15 +1,21 @@
 import { useState } from "react";
 import api from "../api/client.js";
 import { Button } from "../components/ui/button.jsx";
+import { Field, Input, Select } from "../components/ui/field.jsx";
 
 const ORIGINS=["Newcastle","Hay Point","Gladstone","Norfolk","Baltimore","Nacala","Beira","Vostochny","Murmansk","Samarinda","Taboneo"];
 const DESTINATIONS=["Paradip","Visakhapatnam","Gangavaram","Gopalpur","Dhamra","Sagar Sandheads","Haldia","Chennai","Kamarajar","Tuticorin"];
 
 export default function COAOptimizer(){
+  // Nothing here is pre-guessed on the user's behalf: only origin/destination/date
+  // have a sensible default (a place to start from), everything the user has to
+  // actually decide — program size, contract length, spot benchmark — starts
+  // blank with a placeholder so nobody mistakes a placeholder guess for their
+  // own input.
   const [form,setForm]=useState({
     commodity:"Coal",origin_port:"Newcastle",destination_port:"Paradip",
     shipment_date:new Date().toISOString().slice(0,10),cargo_weight_tons:"",
-    total_program_tons:300000,contract_duration_months:6,current_spot_rate_usd_per_ton:""
+    total_program_tons:"",contract_duration_months:"",current_spot_rate_usd_per_ton:""
   });
   const [result,setResult]=useState(null); const [loading,setLoading]=useState(false); const [error,setError]=useState("");
 
@@ -17,6 +23,8 @@ export default function COAOptimizer(){
   async function run(e){
     e.preventDefault(); setLoading(true); setError(""); setResult(null);
     try{
+      if(!form.total_program_tons){ setError("Enter total COA tons."); setLoading(false); return; }
+      if(!form.contract_duration_months){ setError("Enter contract length in months."); setLoading(false); return; }
       const payload={...form,
         total_program_tons:Number(form.total_program_tons),
         contract_duration_months:Number(form.contract_duration_months)};
@@ -39,15 +47,29 @@ export default function COAOptimizer(){
       <h1 className="mt-1 font-display text-3xl font-semibold text-paper-50">{"COA Cost Optimizer"}</h1>
       <p className="mt-2 max-w-3xl text-sm text-slate-400">Compare a multi-voyage COA strategy against today's spot benchmark while enforcing vessel feasibility at both ends of the route.</p>
     </header>
-    <form onSubmit={run} className="grid gap-4 rounded-2xl border border-hull-600 bg-hull-900/60 p-5 md:grid-cols-2 lg:grid-cols-3">
+    <form onSubmit={run} className="grid gap-5 rounded-2xl border border-hull-600 bg-hull-900/60 p-5 md:grid-cols-2 lg:grid-cols-3">
       {[
         ["Origin","origin_port",ORIGINS],["Destination","destination_port",DESTINATIONS]
-      ].map(([label,key,opts])=><label key={key} className="text-sm text-slate-300">{label}<select value={form[key]} onChange={e=>set(key,e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2">{opts.map(x=><option key={x}>{x}</option>)}</select></label>)}
-      <label className="text-sm text-slate-300">Shipment date<input type="date" value={form.shipment_date} onChange={e=>set("shipment_date",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
-      <label className="text-sm text-slate-300">Cargo / voyage (t)<span className="ml-1 text-slate-500">optional</span><input type="number" min="1" placeholder="Auto-sized per vessel class" value={form.cargo_weight_tons} onChange={e=>set("cargo_weight_tons",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
-      <label className="text-sm text-slate-300">Total COA tons<input type="number" min="1" value={form.total_program_tons} onChange={e=>set("total_program_tons",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
-      <label className="text-sm text-slate-300">Contract months<input type="number" min="1" max="36" value={form.contract_duration_months} onChange={e=>set("contract_duration_months",e.target.value)} className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
-      <label className="text-sm text-slate-300">Current spot rate ($/t, optional)<input type="number" min="0.01" step="0.01" value={form.current_spot_rate_usd_per_ton} onChange={e=>set("current_spot_rate_usd_per_ton",e.target.value)} placeholder="Required for $ savings" className="mt-1 w-full rounded-lg border border-hull-600 bg-hull-800 px-3 py-2"/></label>
+      ].map(([label,key,opts])=>(
+        <Field key={key} label={label}>
+          <Select value={form[key]} onChange={e=>set(key,e.target.value)}>{opts.map(x=><option key={x} value={x}>{x}</option>)}</Select>
+        </Field>
+      ))}
+      <Field label="Shipment date">
+        <Input type="date" value={form.shipment_date} onChange={e=>set("shipment_date",e.target.value)} />
+      </Field>
+      <Field label="Cargo / voyage (t)" hint="optional">
+        <Input type="number" min="1" placeholder="Auto-sized per vessel class" value={form.cargo_weight_tons} onChange={e=>set("cargo_weight_tons",e.target.value)} />
+      </Field>
+      <Field label="Total COA tons">
+        <Input type="number" min="1" placeholder="e.g. 300000" value={form.total_program_tons} onChange={e=>set("total_program_tons",e.target.value)} />
+      </Field>
+      <Field label="Contract months">
+        <Input type="number" min="1" max="36" placeholder="e.g. 6" value={form.contract_duration_months} onChange={e=>set("contract_duration_months",e.target.value)} />
+      </Field>
+      <Field label="Current spot rate ($/t)" hint="optional">
+        <Input type="number" min="0.01" step="0.01" value={form.current_spot_rate_usd_per_ton} onChange={e=>set("current_spot_rate_usd_per_ton",e.target.value)} placeholder="Required for $ savings" />
+      </Field>
       <div className="flex items-end"><Button disabled={loading} type="submit">{loading?"Optimizing…":"Optimize COA"}</Button></div>
     </form>
     {error&&(()=>{

@@ -1,18 +1,14 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { subscribeMlWakeup } from "../api/mlWakeup.js";
 
 export default function WakingBanner() {
+  const { t } = useTranslation();
   const [state, setState] = useState({ active: false, phase: null });
   useEffect(() => subscribeMlWakeup(setState), []);
   if (!state.active) return null;
 
-  const message = state.phase === "retrying"
-    ? "still waking up — retrying automatically"
-    : state.phase === "comparing"
-    ? "comparing loading ports and vessel signals — stand by"
-    : state.phase === "working"
-    ? "forecasting service is processing the sheet"
-    : "forecasting service is waking from an idle instance";
+  const message = t(`banners.waking.${["retrying", "comparing", "working"].includes(state.phase) ? state.phase : "probing"}`);
 
   // NOTE: no longer owns its own fixed positioning — StatusBanners (in
   // App.jsx) stacks this alongside ConnectionBanner in one fixed column so
@@ -24,10 +20,10 @@ export default function WakingBanner() {
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vermilion opacity-45" />
         <span className="relative inline-flex h-2.5 w-2.5 rounded-full border border-vermilion/70 bg-paper" />
       </span>
-      <span className="text-rule">ml service</span>
+      <span className="text-rule">{t("banners.waking.label")}</span>
       <span className="h-3 w-px bg-rule/40" />
       <span>{message}</span>
-      <span className="ml-auto hidden font-mono text-[8px] tracking-[0.14em] text-rule sm:inline">status</span>
+      <span className="ml-auto hidden font-mono text-[8px] tracking-[0.14em] text-rule sm:inline">{t("banners.waking.status")}</span>
     </div>
   );
 }

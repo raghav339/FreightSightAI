@@ -88,7 +88,7 @@ export default function WhatIfPanel({ baseRequest, onScenarioChange }) {
           <div className="flex flex-col">
             <CardTitle className="text-lg">{"What-if — cargo & contract sensitivity"}</CardTitle>
             <span className="text-xs text-slate-500">
-              {`Drag to see how vessel choice, turnaround, and contracting strategy shift for ${baseRequest.origin_port}–${baseRequest.destination_port}`}
+              {`Drag to see how vessel choice, turnaround, and contracting strategy shift for ${baseRequest.origin_port}–${baseRequest.destination_port}. These same numbers feed the Decision simulator below.`}
             </span>
           </div>
         </CardHeader>

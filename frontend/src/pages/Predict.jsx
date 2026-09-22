@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
 import ForecastForm from "../components/ForecastForm.jsx";
 import ResultCards from "../components/ResultCards.jsx";
 import TrendChart from "../components/TrendChart.jsx";
@@ -9,6 +10,7 @@ import DecisionSimulator from "../components/DecisionSimulator.jsx";
 import PortRadarNotice from "../components/PortRadarNotice.jsx";
 
 export default function Predict() {
+  const { t } = useTranslation();
   const [result, setResult] = useState(null);
   const [lastRequest, setLastRequest] = useState(null);
   const [scenario, setScenario] = useState(null);
@@ -28,13 +30,11 @@ export default function Predict() {
       <div className="predict-shell mx-auto max-w-[1240px] px-5 pb-16 pt-9 lg:px-8 lg:pt-12">
         <header className="predict-heading">
           <div>
-            <div className="fs-kicker">Forecast console</div>
-            <h1 className="predict-title">Plot a shipment</h1>
-            <p className="predict-intro">
-              Enter the route and cargo profile. The model returns a rate forecast, a market-risk read, and a recommended chartering window with the constraints that shaped it.
-            </p>
+            <div className="fs-kicker">{t("predict.kicker")}</div>
+            <h1 className="predict-title">{t("predict.title")}</h1>
+            <p className="predict-intro">{t("predict.intro")}</p>
           </div>
-          <div className="predict-stamp">one-pager</div>
+          <div className="predict-stamp">{t("predict.onePager")}</div>
         </header>
 
         <div className="mt-7">

@@ -21,7 +21,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
-from app.idle_detector import Observation, detect_idle_vessel, MIN_IDLE_HOURS, PORT_RADIUS_NM
+from app.idle_detector import Observation, detect_idle_vessel, MIN_IDLE_HOURS, PORT_RADIUS_NM, IDLE_SOG_KN
 from app import port_radar
 
 try:
@@ -140,6 +140,10 @@ class AISStreamCollector:
         # Port Disruption Radar results are expensive (8 window scans) and change
         # slowly, so they are cached briefly. key -> (monotonic_ts, payload)
         self._radar_cache: dict[tuple, tuple[float, dict]] = {}
+        # idle_vessels() is polled every 30s by the Idle Vessel Finder page;
+        # a short cache collapses that into one real computation per TTL
+        # window instead of one per request/tab. key -> (monotonic_ts, payload)
+        self._idle_cache: dict[tuple, tuple[float, dict]] = {}
 
         # Production persistence: set AIS_DB_CLIENT=mysql and reuse the
         # existing FreightSight MYSQL_* environment variables. SQLite remains
@@ -762,21 +766,102 @@ class AISStreamCollector:
             "source": "AISStream PositionReport events persisted by FreightSight",
         }
 
+    IDLE_CACHE_TTL_S = 25
+
     def idle_vessels(self, lookback_hours: int = 48, min_idle_hours: float = MIN_IDLE_HOURS,
                      port: str | None = None, limit: int = 50, cargo_only: bool = True):
-        """Return AIS-derived idle vessel candidates from persisted history."""
+        """Return AIS-derived idle vessel candidates from persisted history.
+
+        Two optimizations over a naive "pull every ping, compute in Python":
+
+        1. Candidate narrowing. detect_idle_vessel() can only ever return
+           idle=True when the vessel's *latest* fix is near a tracked port
+           and at/under the idle SOG threshold — both are hard gates in
+           idle_detector._score(). So instead of pulling full multi-day
+           history for every vessel ever seen (including ones steaming at
+           15kn mid-route, which used to dominate the row count), a cheap
+           "latest ping per vessel" scan finds the much smaller candidate
+           set first, and only those vessels' full history gets pulled.
+        2. Short TTL cache. The frontend polls this every 30s; idle status
+           can't meaningfully change faster than min_idle_hours (>=1h), so
+           a ~25s cache collapses repeated/concurrent polls into one real
+           computation instead of re-scanning on every request.
+        """
         lookback_hours = max(4, min(168, int(lookback_hours)))
         min_idle_hours = max(1.0, min(72.0, float(min_idle_hours)))
         limit = max(1, min(200, int(limit)))
+        cargo_only = bool(cargo_only)
+
+        cache_key = (lookback_hours, round(min_idle_hours, 2), port, limit, cargo_only)
+        hit = self._idle_cache.get(cache_key)
+        if hit and time.monotonic() - hit[0] < self.IDLE_CACHE_TTL_S:
+            return hit[1]
+
         cutoff_dt = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
-        cutoff = cutoff_dt.replace(tzinfo=None) if self.db_client == "mysql" else cutoff_dt.isoformat()
+        cutoff = self._bound(cutoff_dt)
 
-        where = ["p.received_at >= ?", "p.lat IS NOT NULL", "p.lon IS NOT NULL"]
-        params: list[Any] = [cutoff]
+        def _finish(results: list[dict[str, Any]]) -> dict[str, Any]:
+            results.sort(key=lambda item: (item["idle_score"], item["idle_duration_hours"]), reverse=True)
+            payload = {
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "lookback_hours": lookback_hours,
+                "min_idle_hours": min_idle_hours,
+                "port_filter": port,
+                "vessels": results[:limit],
+                "count": len(results[:limit]),
+                "definition": {
+                    "sog_threshold_kn": IDLE_SOG_KN,
+                    "min_idle_hours": min_idle_hours,
+                    "position_stability_nm": 0.30,
+                    "port_radius_nm": PORT_RADIUS_NM,
+                    "ais_nav_status_support": ["AT_ANCHOR", "MOORED"],
+                    "charter_availability": "not asserted from AIS alone",
+                },
+                "source": "AISStream PositionReport + ShipStaticData persisted by FreightSight",
+            }
+            self._idle_cache[cache_key] = (time.monotonic(), payload)
+            return payload
+
+        # A vessel can only be flagged idle via its most recent fix (near a
+        # tracked port, at/under the idle SOG threshold) — narrow to that
+        # candidate set before touching full ping history.
+        base_filters = ["received_at >= ?", "lat IS NOT NULL", "lon IS NOT NULL", "port_near IS NOT NULL"]
+        base_params: list[Any] = [cutoff]
         if port:
-            where.append("p.port_near = ?")
-            params.append(port)
+            base_filters.append("port_near = ?")
+            base_params.append(port)
+        base_where_sql = " AND ".join(base_filters)
 
+        cargo_join, cargo_filter = "", ""
+        if cargo_only:
+            cargo_join = "LEFT JOIN ais_static s ON s.mmsi = p.mmsi"
+            cargo_filter = " AND COALESCE(p.ship_type, s.ship_type) BETWEEN 70 AND 79"
+
+        candidate_rows = self._query_all(f"""
+            SELECT p.mmsi
+            FROM ais_positions p
+            INNER JOIN (
+                SELECT mmsi, MAX(received_at) AS max_time
+                FROM ais_positions
+                WHERE {base_where_sql}
+                GROUP BY mmsi
+            ) latest ON latest.mmsi = p.mmsi AND latest.max_time = p.received_at
+            {cargo_join}
+            WHERE p.sog IS NOT NULL AND p.sog <= ?{cargo_filter}
+        """, base_params + [IDLE_SOG_KN])
+        candidate_mmsis = sorted({str(r[0]) for r in candidate_rows})
+
+        if not candidate_mmsis:
+            return _finish([])
+
+        in_placeholders = ",".join(["?"] * len(candidate_mmsis))
+        where_p = [f"p.{c}" for c in base_filters] + [f"p.mmsi IN ({in_placeholders})"]
+        params: list[Any] = base_params + candidate_mmsis
+
+        # No SQL-side ORDER BY: detect_idle_vessel() sorts its own input, and
+        # the per-vessel sort just below is cheap since each candidate's
+        # history is small — sorting the full result set in the database
+        # (as this query used to) is the expensive part we're avoiding.
         rows = self._query_all(f"""
             SELECT p.received_at, p.mmsi, p.ship_name, p.lat, p.lon, p.sog, p.cog,
                    p.heading, p.nav_status, p.port_near, p.port_distance_nm,
@@ -784,8 +869,7 @@ class AISStreamCollector:
                    s.imo, s.destination
             FROM ais_positions p
             LEFT JOIN ais_static s ON s.mmsi = p.mmsi
-            WHERE {' AND '.join(where)}
-            ORDER BY p.mmsi, p.received_at
+            WHERE {' AND '.join(where_p)}
         """, params)
 
         histories: dict[str, list[Observation]] = {}
@@ -821,6 +905,7 @@ class AISStreamCollector:
 
         results = []
         for mmsi, history in histories.items():
+            history.sort(key=lambda item: item.timestamp)
             latest_time = history[-1].timestamp
             window_start = latest_time - timedelta(hours=min(72, lookback_hours))
             recent = [item for item in history if item.timestamp >= window_start]
@@ -836,25 +921,7 @@ class AISStreamCollector:
             detected["vessel_category"] = "AIS cargo/bulk candidate" if detected["bulk_candidate"] else "AIS vessel"
             results.append(detected)
 
-        results.sort(key=lambda item: (item["idle_score"], item["idle_duration_hours"]), reverse=True)
-        results = results[:limit]
-        return {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "lookback_hours": lookback_hours,
-            "min_idle_hours": min_idle_hours,
-            "port_filter": port,
-            "vessels": results,
-            "count": len(results),
-            "definition": {
-                "sog_threshold_kn": 0.5,
-                "min_idle_hours": min_idle_hours,
-                "position_stability_nm": 0.30,
-                "port_radius_nm": PORT_RADIUS_NM,
-                "ais_nav_status_support": ["AT_ANCHOR", "MOORED"],
-                "charter_availability": "not asserted from AIS alone",
-            },
-            "source": "AISStream PositionReport + ShipStaticData persisted by FreightSight",
-        }
+        return _finish(results)
 
 
 collector = AISStreamCollector()

@@ -262,7 +262,7 @@ export default function CompareOrigins() {
                           )}
                         </td>
                         <td className="px-3 py-2.5 font-mono text-xs">
-                          ${r.predicted_freight_rate_usd_per_ton?.toFixed(2)}
+                          ${r.predicted_freight_rate_usd_per_ton?.toFixed(2)}/t
                         </td>
                       </tr>
                     ))}

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { notifyMlWakeup } from "./mlWakeup.js";
+import i18n from "../i18n/index.js";
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
   timeout: 95000,
@@ -40,6 +41,10 @@ function clearSlowTimers(config) {
 }
 
 api.interceptors.request.use((config) => {
+  // Tell the backend (and through it the ML service) which language to build decision text in.
+  config.headers = config.headers || {};
+  config.headers["X-Lang"] = i18n.language || "en";
+
   const token = localStorage.getItem("freightsight_token");
   if (token) {
     config.headers = config.headers || {};

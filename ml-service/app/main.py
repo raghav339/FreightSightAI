@@ -60,6 +60,7 @@ from app.route_model import RouteModel
 from app.coa_optimizer import optimize as optimize_coa
 from app.ais_stream import collector as ais_collector, PORT_COORDS
 from app import brent
+from app.i18n import LangMiddleware, t
 
 app = FastAPI(title="FreightSight AI - ML Service", version="1.2.0")
 
@@ -69,6 +70,9 @@ ALLOWED_ORIGINS = [
     if o.strip()
 ]
 
+# Reads the X-Lang header (sent by the Node backend) so decision text is built in the
+# user's language. Added first, so it wraps every request; must allow the header in CORS.
+app.add_middleware(LangMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,  # set BACKEND_ORIGIN env var in production, comma-separated if needed
@@ -155,7 +159,7 @@ def get_route_bundle() -> RouteModel:
                     # on small hosts such as Render's free tier).
                     _route_bundle = RouteModel(route_freight=get_bundle().route_freight)
                 except Exception as exc:
-                    raise HTTPException(status_code=503, detail=f"Route model unavailable: {exc}") from exc
+                    raise HTTPException(status_code=503, detail=t("errors.route_model_unavailable", error=exc)) from exc
     return _route_bundle
 
 
@@ -180,7 +184,7 @@ def get_bundle() -> ModelBundle:
                 if missing:
                     raise HTTPException(
                         status_code=503,
-                        detail="Model artifacts incomplete.",
+                        detail=t("errors.model_incomplete"),
                     )
 
                 try:
@@ -233,14 +237,14 @@ def ais_port_radar_all(window_hours: float = 6.0, baseline_days: int = 7):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Port radar unavailable: {exc}") from exc
+        raise HTTPException(status_code=503, detail=t("errors.port_radar_unavailable", error=exc)) from exc
 
 
 @app.get("/ais/port-radar/{port}")
 def ais_port_radar(port: str, window_hours: float = 6.0, baseline_days: int = 7):
     """Port Disruption Radar for a single tracked port."""
     if port not in PORT_COORDS:
-        raise HTTPException(status_code=400, detail=f"Unknown AIS port: {port}")
+        raise HTTPException(status_code=400, detail=t("errors.unknown_ais_port", port=port))
     try:
         return ais_collector.port_radar(port, window_hours=window_hours, baseline_days=baseline_days)
     except ValueError as exc:

@@ -596,6 +596,28 @@ def feasible_vessels_both_ports(cargo_tonnage, origin_port_info, destination_por
     return feasible, rejected
 
 
+def _limiting_depth(port_info):
+    """Same draft-limiting-depth logic as check_vessel_port_compatibility
+    (cargo pier depth, else channel depth, else max_draft_m — whichever
+    figures are on file, take the shallowest). Pulled out standalone so
+    recommend_vessel() can report the correct depth for whichever port
+    (origin or destination) actually caused a given vessel's rejection,
+    instead of always reporting the destination's.
+    """
+    if not port_info:
+        return None
+    values = [
+        v
+        for v in (
+            port_info.get("cargo_depth_m"),
+            port_info.get("channel_depth_m"),
+            port_info.get("max_draft_m"),
+        )
+        if v is not None
+    ]
+    return min(values) if values else None
+
+
 def recommend_vessel(
     cargo_tonnage,
     port_depth,
@@ -657,6 +679,35 @@ def recommend_vessel(
     # re-deriving a separate answer here.
     selected_port_ok = any(c["vessel_class"] == selected_class for c in candidates)
 
+    # BUGFIX: the analyst-read explanation used to always say "exceeds the
+    # destination port depth", using only the destination's depth, even
+    # when the selected class actually failed at the ORIGIN port (a
+    # draft/LOA/beam limitation there is checked and can fail first — see
+    # feasible_vessels_both_ports). That produced explanations that were
+    # not just mislabeled but arithmetically false, e.g. claiming a 10.0 m
+    # draft "exceeds" a 15.0 m destination depth when the real, correct
+    # constraint was an 8.0 m origin depth. Work out which port actually
+    # rejected the selected class (from its own rejection_reason, already
+    # computed by check_vessel_port_compatibility) and use THAT port's
+    # name/depth in the explanation instead.
+    failure_port_label = None
+    failure_depth = None
+    if not selected_port_ok:
+        selected_rejection = next(
+            (r for r in rejected if r["vessel_class"] == selected_class), None
+        )
+        reason = (selected_rejection or {}).get("rejection_reason") or ""
+        if reason.startswith("Origin port"):
+            failure_port_label = "origin"
+            failure_depth = _limiting_depth(origin_port_info)
+        elif reason.startswith("Destination port"):
+            failure_port_label = "destination"
+            failure_depth = _limiting_depth(port_info)
+        # Any other reason (e.g. an unrecognized vessel class, or no
+        # infrastructure data on file) leaves failure_port_label as None,
+        # and build_vessel_explanation falls back to the destination depth
+        # exactly as before.
+
     # Find all physically feasible cargo-capable vessels (already filtered
     # to both-port-feasible by feasible_vessels_both_ports above).
     feasible = candidates
@@ -681,6 +732,8 @@ def recommend_vessel(
         over_capacity=bool(selected.get("_over_capacity")),
         predicted_rate=predicted_rate,
         previous_rate=previous_rate,
+        failure_port_label=failure_port_label,
+        failure_depth=failure_depth,
     )
     recommended_class = decision_text["recommended_class"]
     warnings = decision_text["warnings"]

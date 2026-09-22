@@ -6,6 +6,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 
+const { langMiddleware } = require("./middleware/lang");
 const forecastRouter = require("./routes/forecast");
 const historyRouter = require("./routes/history");
 const metaRouter = require("./routes/meta");
@@ -45,6 +46,7 @@ app.use((req, res, next) => {
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 app.use(cors({ origin: FRONTEND_ORIGIN }));
 app.use(express.json());
+app.use(langMiddleware);
 
 app.get(["/health", "/api/health"], (req, res) => {
   res.json({ status: "ok", service: "freightsight-backend" });

@@ -9,6 +9,7 @@ expected freight spend plus an explicit risk/idle allowance.
 from __future__ import annotations
 import math
 from .route_model import RouteModel
+from .i18n import t
 
 VESSEL_LOAD_FACTOR = {
     "Handysize":0.90, "Supramax":0.90, "Panamax":0.90, "Capesize":0.90
@@ -57,7 +58,7 @@ def optimize(req, route_model: RouteModel, port_utils):
             reasons=[r for r in (reason_o if not ok_o else None, reason_d if not ok_d else None) if r]
             rejected.append({
                 "vessel_type": cls,
-                "rejection_reason": " ".join(reasons) or "Does not fit the port constraints at one or both ends.",
+                "rejection_reason": " ".join(reasons) or t("coa.no_fit_ports"),
             })
             continue
         cap=max(float(spec["typical_dwt"])*VESSEL_LOAD_FACTOR.get(cls,.9),1)
@@ -68,10 +69,7 @@ def optimize(req, route_model: RouteModel, port_utils):
             if cap < requested_lift:
                 rejected.append({
                     "vessel_type": cls,
-                    "rejection_reason": (
-                        f"{cls}'s effective capacity ({cap:,.0f} t) is smaller than the "
-                        f"requested cargo/voyage of {requested_lift:,.0f} t."
-                    ),
+                    "rejection_reason": t("coa.capacity_too_small", cls=cls, cap=cap, requested_lift=requested_lift),
                 })
                 continue
             voyages=int(math.ceil(total/requested_lift))
@@ -99,8 +97,8 @@ def optimize(req, route_model: RouteModel, port_utils):
             "average_parcel_tons":round(parcel,1),"estimated_cycle_days":round(cycle_days,1),
             "contract_duration_days":round(contract_days,1),"required_schedule_days":round(required_schedule_days,1),
             "schedule_slack_days":round(schedule_slack_days,1),"schedule_feasible":schedule_feasible,
-            "schedule_note":("Fits inside the requested contract window." if schedule_feasible else
-                              f"Requires ~{required_schedule_days:.0f} days vs {contract_days:.0f} available; contract window is too short for this vessel/voyage plan."),
+            "schedule_note":(t("coa.schedule_fits") if schedule_feasible else
+                              t("coa.schedule_short", required_schedule_days=required_schedule_days, contract_days=contract_days)),
             "contract_rate_usd_per_ton":round(rate,2) if rate is not None else None,
             "expected_freight_cost_usd":round(cost,2) if cost is not None else None,
             "operational_index":round(ops_index,1),"risk_buffer_pct":round((risk_mult-1)*100,2),
@@ -108,9 +106,9 @@ def optimize(req, route_model: RouteModel, port_utils):
     if not candidates:
         detail=" | ".join(f"{r['vessel_type']}: {r['rejection_reason']}" for r in rejected)
         prefix=(
-            "No vessel class can carry the requested cargo/voyage at both origin and destination ports."
+            t("coa.none_carry_lift")
             if requested_lift is not None else
-            "No vessel class is feasible at both origin and destination ports for the COA program."
+            t("coa.none_feasible_program")
         )
         raise ValueError(prefix + (f" {detail}" if detail else ""))
     feasible_schedule = [c for c in candidates if c["schedule_feasible"]]

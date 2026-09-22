@@ -6,6 +6,8 @@
 // pressed "Compare procurement options" first.
 import { useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n/index.js";
 import api from "../api/client.js";
 import { Button } from "./ui/button.jsx";
 
@@ -23,11 +25,12 @@ async function messageFrom(err) {
   } else if (data?.error) {
     return data.error;
   }
-  if (err?.code === "ECONNABORTED") return "The brief took too long to build. Please try again.";
-  return "Could not generate the decision brief. Please try again.";
+  if (err?.code === "ECONNABORTED") return i18n.t("brief.tooLong");
+  return i18n.t("brief.failed");
 }
 
 export default function DecisionBriefButton({ recordId, cargo, duration, className = "" }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -62,16 +65,16 @@ export default function DecisionBriefButton({ recordId, cargo, duration, classNa
         size="sm"
         onClick={download}
         disabled={busy || !recordId}
-        title={recordId ? undefined : "Run a forecast first — the brief is built from a saved forecast."}
+        title={recordId ? undefined : t("brief.runFirst")}
         className="gap-2"
       >
         {busy ? (
           <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Building brief…
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("brief.building")}
           </>
         ) : (
           <>
-            <FileText className="h-3.5 w-3.5" /> Download decision brief
+            <FileText className="h-3.5 w-3.5" /> {t("brief.download")}
           </>
         )}
       </Button>

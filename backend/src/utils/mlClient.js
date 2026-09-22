@@ -21,7 +21,22 @@
 // — waiting longer than Render itself will wait is pointless and just
 // turns a clean error into a dropped connection.
 
+const axios = require("axios");
+const { currentLang } = require("../middleware/lang");
+
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:8001";
+
+// Forward the caller's language to the ML service on every request the backend makes to
+// it, so decision text comes back in that language (see middleware/lang.js).
+function attachLang(config) {
+  const lang = currentLang();
+  if (lang && typeof config.url === "string" && config.url.startsWith(ML_SERVICE_URL)) {
+    if (config.headers && typeof config.headers.set === "function") config.headers.set("X-Lang", lang);
+    else config.headers = { ...(config.headers || {}), "X-Lang": lang };
+  }
+  return config;
+}
+axios.interceptors?.request?.use?.(attachLang);
 
 // How long a retried attempt is allowed to sit waiting for a cold boot +
 // model load. Render enforces a hard ~100s proxy timeout on EVERY HTTP
@@ -119,10 +134,11 @@ function sendMlError(res, err, fallbackMessage) {
       .set("Retry-After", "10")
       .json({
         error: "ml-service is starting up (this can take up to a couple of minutes on a cold instance) — please retry shortly",
+        code: "ml_starting",
         retryable: true,
       });
   }
   return res.status(502).json({ error: fallbackMessage });
 }
 
-module.exports = { ML_SERVICE_URL, withRetry, isRetryable, isColdStartFailure, sendMlError };
+module.exports = { ML_SERVICE_URL, withRetry, isRetryable, isColdStartFailure, sendMlError, attachLang };
