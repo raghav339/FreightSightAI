@@ -50,6 +50,9 @@ from app.schemas import (
     ForecastResponse,
     HealthResponse,
     CompareOriginsRequest,
+    PortSubstitutionRequest,
+    DisruptionSimulateRequest,
+    DisruptionLiveRequest,
     IdleAlternativesRequest,
     RouteForecastRequest,
     COAOptimizeRequest,
@@ -60,6 +63,7 @@ from app.route_model import RouteModel
 from app.coa_optimizer import optimize as optimize_coa
 from app.ais_stream import collector as ais_collector, PORT_COORDS
 from app import brent
+from app.calibration import build_calibration_summary
 
 app = FastAPI(title="FreightSight AI - ML Service", version="1.2.0")
 
@@ -115,6 +119,18 @@ def _warm_up_models():
         get_route_bundle()
     except Exception as exc:  # pragma: no cover - best-effort warmup
         print(f"[warmup] route model warmup failed (will retry lazily on first request): {exc}")
+
+    # PERF: precompute every lane's forecast for this month and next in the
+    # background so compare-origins / idle-vessel requests are cache hits
+    # instead of ~10-30 lane-model loads each. Runs one lane at a time with a
+    # short pause so it never starves real requests. Set
+    # PREWARM_FORECASTS=0 to disable (e.g. on a very small instance).
+    if os.environ.get("PREWARM_FORECASTS", "1").strip().lower() not in ("0", "false", "no", "off"):
+        try:
+            done = get_bundle().prefill_forecasts(months_ahead=1, pause_s=0.05)
+            print(f"[warmup] pre-computed {done} lane forecasts")
+        except Exception as exc:  # pragma: no cover - best-effort warmup
+            print(f"[warmup] forecast prefill failed (requests will compute lazily): {exc}")
 
 
 @app.on_event("startup")
@@ -410,6 +426,52 @@ def compare_origins(req: CompareOriginsRequest):
     return bundle.compare_origins(req)
 
 
+@app.post("/port-substitution")
+def port_substitution(req: PortSubstitutionRequest):
+    """Port Substitution Engine — if a discharge port becomes unavailable,
+    rank the other ports (vessel fit, draft/LOA, cargo capacity, congestion,
+    distance, freight impact, delay, handling) and return a substitution map."""
+    bundle = get_bundle()
+    try:
+        return bundle.port_substitution(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/disruption/simulate")
+def simulate_disruption(req: DisruptionSimulateRequest):
+    """Disruption Engine — simulate an event (cyclone, port closure, vessel
+    shortage, freight spike, congestion surge) at a port, see the propagation
+    to delay/freight, and (for discharge ports) ranked alternatives from the
+    Port Substitution Engine."""
+    bundle = get_bundle()
+    try:
+        return bundle.simulate_disruption(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/disruption/live")
+def live_disruption(req: DisruptionLiveRequest):
+    """Disruption Engine — Live mode: fetch current marine conditions
+    (wind/wave/precipitation) at the port, score a severity, and run the same
+    propagation as Simulate mode with source="live". Raises 400 if live
+    conditions cannot currently be fetched for the port (never fabricates a
+    severity — see app/marine_weather.py)."""
+    bundle = get_bundle()
+    try:
+        return bundle.live_disruption(req)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/disruption/event-types")
+def disruption_event_types():
+    """Event types the Disruption Engine knows about, for the Simulate form."""
+    from app import disruption_engine as de
+    return {"event_types": de.list_event_types()}
+
+
 @app.post("/idle-alternatives")
 def idle_alternatives(req: IdleAlternativesRequest):
     """(6) Idle-vessel repositioning — rank next-best loading ports for a
@@ -466,6 +528,23 @@ def route_freight_status():
         "skipped_routes": meta.get("skipped_routes", {}),
         "target": meta.get("target", "observed_freight_usd_per_t"),
     }
+
+
+@app.get("/calibration/summary")
+def calibration_summary(horizon: str = "1", limit: int = 20):
+    """"Here's how our past forecasts compared to actual market rates":
+    lane-level held-out forecast error from training's own walk-forward
+    evaluation, not a live re-run. See app/calibration.py.
+
+    `horizon` selects which forecast horizon (in months-ahead) to report;
+    `limit` caps how many lanes are returned, sorted by the ones with the
+    most held-out test observations (least noisy first).
+    """
+    bundle = get_route_bundle()
+    rf = getattr(bundle, "route_freight", None)
+    meta = rf.meta if rf is not None else {"status": "inactive", "metrics": {}}
+    limit = max(1, min(int(limit), 200))
+    return build_calibration_summary(meta, horizon=str(horizon), limit=limit)
 
 
 @app.get("/dashboard-summary")

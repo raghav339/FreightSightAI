@@ -562,9 +562,15 @@ class AISStreamCollector:
         stats once up front and only needs the per-origin half repeated."""
         if port not in PORT_COORDS:
             raise ValueError(f"Unknown AIS port: {port}")
+        key = (port, int(lookback_hours))
+        cached = self._ttl_get("congestion", key, self.PORT_CONGESTION_TTL_S)
+        if cached is not None:
+            return dict(cached)
         cutoff_dt = datetime.now(timezone.utc)-timedelta(hours=max(1, min(168, int(lookback_hours))))
         cutoff = cutoff_dt.replace(tzinfo=None) if self.db_client == "mysql" else cutoff_dt.isoformat()
-        return self._port_stats(port, cutoff)
+        stats = self._port_stats(port, cutoff)
+        self._ttl_put("congestion", key, dict(stats))
+        return stats
 
     # ------------------------------------------------------------------
     # Port Disruption Radar
@@ -762,8 +768,41 @@ class AISStreamCollector:
             "source": "AISStream PositionReport events persisted by FreightSight",
         }
 
+    # PERF: the idle scan pulls up to 48h of position rows and walks every
+    # vessel's history; the Idle Vessel Finder page polls it, and every poll
+    # used to redo the whole scan (competing with the forecast endpoints for
+    # the same CPU). A short TTL is invisible for data that only changes as
+    # fast as AIS messages arrive.
+    IDLE_SCAN_TTL_S = 20
+    PORT_CONGESTION_TTL_S = 60
+
+    def _ttl_get(self, name: str, key, ttl: float):
+        cache = self.__dict__.setdefault("_ttl_cache", {})
+        hit = cache.get((name, key))
+        if hit is not None and time.monotonic() - hit[0] < ttl:
+            return hit[1]
+        return None
+
+    def _ttl_put(self, name: str, key, value):
+        cache = self.__dict__.setdefault("_ttl_cache", {})
+        if len(cache) > 256:
+            cache.clear()
+        cache[(name, key)] = (time.monotonic(), value)
+
     def idle_vessels(self, lookback_hours: int = 48, min_idle_hours: float = MIN_IDLE_HOURS,
                      port: str | None = None, limit: int = 50, cargo_only: bool = True):
+        """Return AIS-derived idle vessel candidates from persisted history
+        (cached for IDLE_SCAN_TTL_S seconds — see note above)."""
+        key = (int(lookback_hours), float(min_idle_hours), port, int(limit), bool(cargo_only))
+        cached = self._ttl_get("idle", key, self.IDLE_SCAN_TTL_S)
+        if cached is not None:
+            return cached
+        result = self._idle_vessels_uncached(lookback_hours, min_idle_hours, port, limit, cargo_only)
+        self._ttl_put("idle", key, result)
+        return result
+
+    def _idle_vessels_uncached(self, lookback_hours: int = 48, min_idle_hours: float = MIN_IDLE_HOURS,
+                               port: str | None = None, limit: int = 50, cargo_only: bool = True):
         """Return AIS-derived idle vessel candidates from persisted history."""
         lookback_hours = max(4, min(168, int(lookback_hours)))
         min_idle_hours = max(1.0, min(72.0, float(min_idle_hours)))

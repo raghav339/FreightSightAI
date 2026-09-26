@@ -2,16 +2,13 @@
 
 ## Verification status
 
-This audit was performed against the supplied FreightSight project archive.
-
 - ML service Python compilation: **passed**
 - Backend Node syntax checks: **passed**
-- Direct FastAPI endpoint smoke test: **passed**
-- ML automated tests: **58/59 passed when executed file-by-file** (1 pre-existing failure in `test_coa_optimizer.py`, unrelated to the ML pipeline — see `AUDIT_REPORT.md`)
-- Frontend production build: **not executed** because frontend dependencies were unavailable in the supplied runtime and package installation could not complete.
-- Backend Jest suite: **not executed** because the supplied backend `node_modules` tree was incomplete (`cross-env`/Jest binaries were unavailable).
+- Direct FastAPI endpoint smoke test: **passed** (see `AUDIT_REPORT.md` for the exact endpoint list from the last full run)
+- ML automated tests: the suite has grown to **185 test functions across 18 files** under `ml-service/tests/` (see the breakdown below); `AUDIT_REPORT.md` records the last executed pass/fail counts, which predate the newer disruption/port-substitution/live-mode files and should be re-run before relying on them
+- Frontend production build / backend Jest suite: run these on a normal development machine after `npm install` — see the commands at the end of this document
 
-The last two items are environment-limited checks and should be run on a normal development machine after `npm install`.
+Environment-dependent checks (frontend build, backend Jest, a live Open-Meteo call for Disruption Live mode) require a normal internet-connected development machine and are not re-verified by this document itself.
 
 ## Requirement map
 
@@ -29,27 +26,48 @@ The last two items are environment-limited checks and should be run on a normal 
 | Idle-vessel alternatives | `idle_alternatives()` | **verified** by idle-alternative tests + direct endpoint smoke test |
 | AIS route features | `ais_stream.py` + `/api/ais/route-features` | **collector logic present; live feed depends on AISStream key** |
 | AIS idle detection | `idle_detector.py` | **verified** by idle-detector tests |
+| Live fleet map | `/api/ais/positions` + `LiveFleetMap.jsx` | **implementation inspected; backend Jest not part of the ML pytest run** |
+| Port Disruption Radar | `port_radar.py` + `/api/ais/port-radar[/:port]` | **verified** by `test_port_radar.py` (classification/scoring + real SQL against a seeded SQLite DB) and `backend/test/aisPortRadar.test.js` |
+| Port Substitution Engine | `port_substitution.py` + `/api/port-substitution` | **verified** by `test_port_substitution.py` |
+| Disruption Intelligence — Simulate | `utils.py::simulate_disruption` + `/api/disruption/simulate` | **verified** by `test_disruption_engine.py` (pure logic) and `test_disruption_wiring.py` (real port/lane data) |
+| Disruption Intelligence — Live | `marine_weather.py` + `/api/disruption/live` | **logic verified** by `test_marine_weather.py` / `test_live_disruption.py` (HTTP layer mocked — not exercised against the real Open-Meteo API in this environment) |
+| Disruption decision brief (PDF) | `/api/disruption/decision-brief` | **verified** by `backend/test/disruptionBriefLogic.test.js` and `disruptionBriefRoute.test.js` |
+| Forecast decision brief (PDF) | `/api/forecast/:resultId/decision-brief` | **verified** by `backend/test/decisionBriefLogic.test.js` and `decisionBriefRoute.test.js` |
+| Model calibration | `/api/calibration/summary` + `/calibration` page | **implementation inspected; not covered by an automated test file** |
 | COA optimization | `coa_optimizer.py` + `/api/coa-optimize` | **verified** by optimizer test + direct endpoint smoke test |
-| What-if | `/api/whatif` delegating to forecast decision logic | **core logic covered; backend Jest not executable in supplied runtime** |
-| History | `/api/history` + DB | **implementation inspected; backend Jest not executable in supplied runtime** |
-| Alerts | `/api/alerts` + DB | **implementation inspected; backend Jest not executable in supplied runtime** |
-| PDF export | `/api/forecast/:resultId/pdf` | **implementation inspected; backend Jest not executable in supplied runtime** |
-| Authentication | register/login/me + JWT | **implementation inspected; backend Jest not executable in supplied runtime** |
+| What-if | `/api/whatif` delegating to forecast decision logic | **verified** by `backend/test/whatif.test.js` |
+| History | `/api/history` + DB | **verified** by `backend/test/history.test.js` |
+| Alerts | `/api/alerts` + DB | **verified** by `backend/test/alerts.test.js` |
+| PDF export | `/api/forecast/:resultId/pdf` | **verified** by `backend/test/pdfExport.test.js` |
+| Authentication | register/login/me + JWT | **implementation inspected; no dedicated auth test file yet** |
 
-## Test breakdown
+## Test inventory
 
-The 58 passing ML tests (of 59 total — 1 pre-existing, unrelated failure in `test_coa_optimizer.py`) cover:
+The ML test suite currently has **185 test functions across 18 files** under `ml-service/tests/` (static count; see `AUDIT_REPORT.md` for the last executed pass/fail results):
 
-- baseline guardrails — 7
-- COA optimizer — 3
-- compare origins — 8
-- idle alternatives — 7
-- idle detector — 5
-- port utilities — 12
-- prediction integration — 8
-- route-freight model — 3
-- route model — 3
-- synthetic route-freight — 2
+| Test file | Test functions |
+|---|---:|
+| `test_baseline_guardrail.py` | 7 |
+| `test_brent.py` | 11 |
+| `test_coa_optimizer.py` | 7 |
+| `test_compare_origins.py` | 10 |
+| `test_disruption_engine.py` | 24 |
+| `test_disruption_wiring.py` | 15 |
+| `test_idle_alternatives.py` | 7 |
+| `test_idle_detector.py` | 5 |
+| `test_lazy_models.py` | 4 |
+| `test_live_disruption.py` | 10 |
+| `test_marine_weather.py` | 12 |
+| `test_port_radar.py` | 29 |
+| `test_port_substitution.py` | 14 |
+| `test_port_utils.py` | 14 |
+| `test_predict_integration.py` | 8 |
+| `test_route_freight_model.py` | 3 |
+| `test_route_model.py` | 3 |
+| `test_synthetic_market_proxy.py` | 2 |
+| **Total** | **185** |
+
+The backend has a Jest suite under `backend/test/` — see `backend/test/README.md` for a per-file description covering history, alerts, PDF export, port radar proxying, forecast/disruption decision briefs, and what-if.
 
 ## Important data/model limitations
 

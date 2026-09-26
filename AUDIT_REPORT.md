@@ -1,8 +1,10 @@
 # FreightSight Audit Report — 2026-09-07
 
+> **Note:** this report is a point-in-time record of the audit run below. Several features shipped afterwards — Port Disruption Radar, the Port Substitution Engine, Disruption Intelligence (Simulate and Live modes), the Live Fleet Map, model calibration, and forecast/disruption PDF decision briefs — are not covered by the findings or test counts in this document. See `docs/SIH26006_TRACEABILITY.md` for the current, up-to-date requirement map and test inventory, and `FreightSight_Project_Manual.md` for the current feature set.
+
 ## Scope
 
-Full archive-level inspection of frontend, backend, ML service, model/data artifacts, API wiring, configuration examples, documentation, tests and service integration.
+Full archive-level inspection of frontend, backend, ML service, model/data artifacts, API wiring, configuration examples, documentation, tests and service integration, as of the date above.
 
 ## Findings
 
@@ -15,13 +17,13 @@ Full archive-level inspection of frontend, backend, ML service, model/data artif
    - This could otherwise cause a deployed frontend to ignore the configured backend URL and fall back to `/api`.
 
 2. **Stale route-model metadata documentation**
-   - `ml-service/models/route_model_metadata.json` said direct AIS was not supplied, while the current code implements AISStream inference-time integration.
+   - `ml-service/models/route_freight_model_metadata.json` said direct AIS was not supplied, while the current code implements AISStream inference-time integration.
    - Updated metadata to reflect the actual implementation.
 
 3. **Project documentation drift**
    - Updated `README.md`.
-   - Added `PROJECT_MANUAL.md`.
-   - Updated `docs/SIH26006_TRACEABILITY.md` to reflect the current 64-test ML verification result and the actual dependency-limited checks.
+   - Added `FreightSight_Project_Manual.md`.
+   - Updated `docs/SIH26006_TRACEABILITY.md` to reflect the ML verification result and the actual dependency-limited checks.
 
 ### No blocking defect found in executable ML logic
 

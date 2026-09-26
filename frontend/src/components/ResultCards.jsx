@@ -117,7 +117,7 @@ export default function ResultCards({ result }) {
       <section className="analyst-read">
         <div>
           <div className="result-kicker">Analyst read · generated from model output</div>
-          <p className="analyst-read__text">{result.reasoning || `For ${result.commodity || "this cargo"} into ${result.destination_port || "the destination"}, the route freight rate is forecast at about $${Number(result.forecast_value ?? 0).toFixed(2)}/unit. Market risk is ${riskText[result.risk_label] || "medium"}. ${result.charter_window || "Review the projected charter window"}.`}</p>
+          <p className="analyst-read__text">{result.reasoning || `For ${result.commodity || "this cargo"} into ${result.destination_port || "the destination"}, the route freight rate is forecast at about $${Number(result.forecast_value ?? 0).toFixed(2)}/t. Market risk is ${riskText[result.risk_label] || "medium"}. ${result.charter_window || "Review the projected charter window"}.`}</p>
         </div>
       </section>
 
@@ -154,7 +154,7 @@ export default function ResultCards({ result }) {
       </WideSection>
 
       {result.forecast_curve?.length > 0 && <WideSection eyebrow="Multi-horizon outlook" title="Projected movement across the next horizons">
-        <div className="result-three-col">{result.forecast_curve.map((p, i) => <div className="result-paper-card" key={i}><div className="result-paper-sub">{p.date}</div><div className="result-paper-value">{typeof p.predicted_rate === "number" ? p.predicted_rate.toFixed(2) : "—"}</div>{p.lower_bound != null && p.upper_bound != null && <div className="result-paper-sub">{p.lower_bound.toFixed(2)}–{p.upper_bound.toFixed(2)}</div>}</div>)}</div>
+        <div className="result-three-col">{result.forecast_curve.map((p, i) => <div className="result-paper-card" key={i}><div className="result-paper-sub">{p.date}</div><div className="result-paper-value">{typeof p.predicted_rate === "number" ? `$${p.predicted_rate.toFixed(2)}/t` : "—"}</div>{p.lower_bound != null && p.upper_bound != null && <div className="result-paper-sub">${p.lower_bound.toFixed(2)}–${p.upper_bound.toFixed(2)}/t</div>}</div>)}</div>
       </WideSection>}
 
       {(result.origin_port_info || result.destination_port_info) && <WideSection eyebrow="Vessel fit" title="Port constraints and vessel feasibility">

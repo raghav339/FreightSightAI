@@ -12,6 +12,8 @@ Files:
 2. global_cargo_ships.csv
 3. route_freight_observations.csv
 
+`DATASET_MANIFEST.json` here is a generated inventory (row counts, coverage, missingness) — regenerate with `python scripts/generate_data_manifest.py` after replacing a file above; don't hand-edit it.
+
 Important:
 - Do NOT present these values as real public datasets in the final SIH demo/PPT.
 - Replace them with the real source files before making real-data claims.

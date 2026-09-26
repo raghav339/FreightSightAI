@@ -1,4 +1,8 @@
+import copy
 import json
+import os
+import threading
+import time
 from datetime import date
 from pathlib import Path
 import pandas as pd
@@ -94,6 +98,13 @@ class ModelBundle:
         # forecast-model-shaped. Those lists describe the network the app
         # covers, not the (now-removed) BDRY pipeline.
         self.route_freight = RouteFreightModel(MODELS_DIR, MODELS_DIR.parent / "data" / "production")
+
+        # PERF: short-lived memo caches (see _route_forecast, compare_origins,
+        # idle_alternatives). Everything here is recomputable, so a stale or
+        # missing entry only ever costs time, never correctness.
+        self._cache_lock = threading.Lock()
+        self._forecast_cache: dict = {}
+        self._decision_cache: dict = {}
 
     # ------------------------------------------------------------------
     # Risk derivation (replaces the trained risk_model.joblib classifier)
@@ -197,7 +208,96 @@ class ModelBundle:
     # ------------------------------------------------------------------
     # Core forecast (route-freight only — no BDRY fallback)
     # ------------------------------------------------------------------
+    # A lane's forecast only depends on (lane, commodity, calendar month of
+    # the shipment date) plus the live Brent signal inside the risk score, so
+    # it is safe to reuse for a few minutes. compare-origins, idle-alternatives,
+    # the decision simulator and the what-if sliders all re-request the same
+    # lanes over and over; before this every one of those paid a lane-model
+    # disk load + ~150-tree ensemble evaluation again.
+    FORECAST_CACHE_TTL_S = 600
+    FORECAST_CACHE_MAX = 4096
+    DECISION_CACHE_TTL_S = 120
+    DECISION_CACHE_MAX = 256
+
+    @staticmethod
+    def _month_key(shipment_date):
+        try:
+            ts = pd.Timestamp(shipment_date)
+            return (ts.year, ts.month)
+        except Exception:
+            return str(shipment_date)
+
     def _route_forecast(self, origin_port, destination_port, commodity, shipment_date):
+        key = (
+            id(self.route_freight),
+            str(origin_port).strip().lower(),
+            str(destination_port).strip().lower(),
+            str(commodity or "").strip().lower().replace(" ", "_").replace("&", "and"),
+            self._month_key(shipment_date),
+        )
+        now = time.monotonic()
+        with self._cache_lock:
+            hit = self._forecast_cache.get(key)
+        if hit is not None and now - hit[0] < self.FORECAST_CACHE_TTL_S:
+            return dict(hit[1])
+        core = self._route_forecast_uncached(origin_port, destination_port, commodity, shipment_date)
+        with self._cache_lock:
+            if len(self._forecast_cache) >= self.FORECAST_CACHE_MAX:
+                self._forecast_cache.clear()
+            self._forecast_cache[key] = (now, core)
+        return dict(core)
+
+    def _decision_cached(self, name, key_parts, compute):
+        """TTL memo for whole compare-origins / idle-alternatives answers.
+        Errors are never cached (compute() raising just propagates)."""
+        key = (name, id(self.route_freight), key_parts)
+        now = time.monotonic()
+        with self._cache_lock:
+            hit = self._decision_cache.get(key)
+        if hit is not None and now - hit[0] < self.DECISION_CACHE_TTL_S:
+            return copy.deepcopy(hit[1])
+        result = compute()
+        with self._cache_lock:
+            if len(self._decision_cache) >= self.DECISION_CACHE_MAX:
+                self._decision_cache.clear()
+            self._decision_cache[key] = (now, result)
+        return copy.deepcopy(result)
+
+    def prefill_forecasts(self, months_ahead=1, pause_s=0.02):
+        """Warm the forecast memo for every covered lane (current month, plus
+        `months_ahead` more), one lane at a time so the lane LRU never holds
+        more than it does today. Run from a background thread at startup so a
+        user's first compare-origins / idle-vessel request is a dictionary
+        lookup instead of ~30 lane-model loads. Best effort: any lane that
+        fails is simply skipped and computed lazily when asked for."""
+        rf = self.route_freight
+        if rf is None or rf.data.empty or not rf.models.get(1):
+            return 0
+        today = date.today()
+        months = []
+        y, m = today.year, today.month
+        for _ in range(months_ahead + 1):
+            months.append(date(y, m, 1))
+            m += 1
+            if m > 12:
+                y, m = y + 1, 1
+        done = 0
+        for lane in list(rf.models[1]):
+            try:
+                origin, destination, _rid = lane.split("|", 2)
+                commodity = str(rf._key_first_row.loc[lane, "commodity"])
+            except Exception:
+                continue
+            for when in months:
+                try:
+                    self._route_forecast(origin, destination, commodity, when)
+                    done += 1
+                except Exception:
+                    pass
+            time.sleep(pause_s)
+        return done
+
+    def _route_forecast_uncached(self, origin_port, destination_port, commodity, shipment_date):
         route_result = self.route_freight.predict(
             origin_port, destination_port, shipment_date, commodity=commodity
         ) if self.route_freight is not None else None
@@ -294,6 +394,8 @@ class ModelBundle:
             req.cargo_weight_tons,
             origin_port_info,
             dest_port_info,
+            origin_name=req.origin_port,
+            destination_name=req.destination_port,
         )
         feasible = [c["vessel_class"] for c in feasible_candidates]
 
@@ -461,7 +563,488 @@ class ModelBundle:
             "stowage_note": stowage_note,
         }
 
+    # ------------------------------------------------------------------
+    # Port Substitution Engine (see app/port_substitution.py for the rules)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _norm_port_name(name):
+        import re
+        return re.sub(r"[^a-z0-9]+", " ", str(name or "").lower()).strip()
+
+    def _known_destinations(self):
+        names = list(self.meta.get("destinations", []) or [])
+        try:
+            from app.ais_stream import DESTINATIONS as _AIS_DESTINATIONS
+            for n in _AIS_DESTINATIONS:
+                if n not in names:
+                    names.append(n)
+        except Exception:
+            pass
+        return names
+
+    def _canonical_destination(self, name):
+        """'Vizag' / 'sagar-sandheads' / 'PARADIP' -> the canonical port name."""
+        want = self._norm_port_name(name)
+        for cand in self._known_destinations():
+            info = port_utils.get_port(cand) or {}
+            if want in (self._norm_port_name(cand), self._norm_port_name(info.get("alias"))):
+                return cand
+        return str(name).strip()
+
+    @staticmethod
+    def _classes_fitting(cargo, port_info, port_name, origin_info=None, origin_name=None):
+        """Vessel classes (smallest first) that can carry `cargo` and pass the
+        port checks at the discharge port (and the loading port, if known).
+        Returns (feasible_entries, rejected_entries_with_reason)."""
+        rows = sorted(
+            (r for _, r in port_utils.VESSEL_SPECS.iterrows()),
+            key=lambda r: float(r["typical_dwt"]),
+        )
+        feasible, rejected = [], []
+        for row in rows:
+            entry = {
+                "vessel_class": row["vessel_class"],
+                "typical_dwt": float(row["typical_dwt"]),
+                "typical_draft": float(row["typical_draft"]) if pd.notna(row["typical_draft"]) else None,
+                "typical_length": float(row["typical_length"]) if pd.notna(row["typical_length"]) else None,
+                "typical_beam": float(row["typical_beam"]) if pd.notna(row["typical_beam"]) else None,
+            }
+            if entry["typical_dwt"] < float(cargo):
+                rejected.append({**entry, "rejection_reason": (
+                    f"Cargo exceeds recommended capacity: {float(cargo):,.0f} t requested vs. "
+                    f"{entry['vessel_class']}'s typical DWT of {entry['typical_dwt']:,.0f} t."), "cargo_ok": False})
+                continue
+            if origin_info is not None:
+                ok, reason = port_utils.check_vessel_port_compatibility(
+                    entry["vessel_class"], origin_info, label="origin port", port_name=origin_name)
+                if not ok:
+                    rejected.append({**entry, "rejection_reason": reason, "cargo_ok": True})
+                    continue
+            ok, reason = port_utils.check_vessel_port_compatibility(
+                entry["vessel_class"], port_info, label="destination port", port_name=port_name)
+            if not ok:
+                rejected.append({**entry, "rejection_reason": reason, "cargo_ok": True})
+                continue
+            feasible.append(entry)
+        return feasible, rejected
+
+    def port_substitution(self, req):
+        key_parts = (
+            tuple(self.meta.get("destinations", [])), str(req.failed_port), float(req.cargo_weight_tons),
+            str(req.commodity or ""), str(req.origin_port or ""), str(req.shipment_date or date.today()),
+            str(req.vessel_type or ""), float(req.max_distance_nm), bool(req.use_live_ais),
+        )
+        return self._decision_cached("substitute", key_parts, lambda: self._port_substitution_impl(req))
+
+    def _port_substitution_impl(self, req):
+        import concurrent.futures
+        from app import port_substitution as ps
+        try:
+            from app.ais_stream import PORT_COORDS as coords
+        except Exception:
+            coords = {}
+
+        failed = self._canonical_destination(req.failed_port)
+        failed_info = port_utils.get_port(failed)
+        if failed_info is None and failed not in coords:
+            raise ValueError(f"Unknown port '{req.failed_port}': no infrastructure or coordinate data on file.")
+        cargo = float(req.cargo_weight_tons)
+        when = req.shipment_date or date.today()
+        commodity = (req.commodity or "").strip() or None
+        origin = self._canonical_origin(req.origin_port) if req.origin_port else None
+        origin_info = port_utils.get_port(origin) if origin else None
+        notes = []
+        if origin and origin_info is None:
+            notes.append(f"No port data for loading port {origin}; the loading-port vessel check was skipped.")
+
+        # Live AIS radar, best effort (one cached call covers every port).
+        radar_by_port = {}
+        live_ais = False
+        if req.use_live_ais and ais_collector is not None and getattr(ais_collector, "enabled", False):
+            try:
+                for item in ais_collector.port_radar_all().get("ports", []):
+                    radar_by_port[item["port"]] = item
+                live_ais = any(v.get("status") in ("NORMAL", "WATCH", "ELEVATED", "CRITICAL") for v in radar_by_port.values())
+            except Exception:
+                radar_by_port = {}
+
+        def lane(dest):
+            if not (origin and commodity):
+                return None
+            try:
+                core = self._route_forecast(origin, dest, commodity, when)
+                return {"rate": float(core["forecast"]), "risk": core.get("risk")}
+            except Exception:
+                return None
+
+        # ---- baseline: the failed port itself -------------------------------
+        f_feasible, _ = (self._classes_fitting(cargo, failed_info, failed, origin_info, origin)
+                         if failed_info else ([], []))
+        planned = req.vessel_type or (f_feasible[0]["vessel_class"] if f_feasible else None)
+        f_rate_tpd = (failed_info or {}).get("cargo_handling_rate_tpd") or 8000
+        base_discharge = round(cargo / f_rate_tpd, 2)
+        base_transit = port_utils.estimate_transit_days(origin, failed) if origin else None
+
+        candidates = [c for c in self._known_destinations() if c != failed]
+        f_coord = coords.get(failed)
+        if f_coord:
+            candidates = [c for c in candidates
+                          if coords.get(c) is None or (ps.haversine_nm(f_coord, coords[c]) or 0) <= req.max_distance_nm]
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(candidates) or 1, 8)) as pool:
+            lanes = dict(zip(candidates, pool.map(lane, candidates)))
+        base_lane = lane(failed)
+
+        options = []
+        for cand in candidates:
+            info = port_utils.get_port(cand)
+            feasible, rejected = self._classes_fitting(cargo, info, cand, origin_info, origin)
+            classes = [v["vessel_class"] for v in feasible]
+            chosen = None
+            if feasible:
+                chosen = next((v for v in feasible if v["vessel_class"] == planned), None) or feasible[0]
+            margin, draft_m, loa_m = ps.vessel_margin_ratio(chosen, info)
+            reason = None
+            if not feasible:
+                cargo_ok = [r for r in rejected if r.get("cargo_ok")]
+                reason = (cargo_ok[0] if cargo_ok else (rejected[-1] if rejected else {})).get("rejection_reason")
+                if cargo_ok and str(reason).startswith("Origin port"):
+                    # The LOADING port is what blocks it, not this candidate.
+                    reason = f"Blocked by the loading port, not by {cand}. {reason}"
+                elif cargo_ok:
+                    reason = f"No vessel class that can carry {cargo:,.0f} t fits {cand}. {reason}"
+
+            cand_coord = coords.get(cand)
+            dist_failed = ps.haversine_nm(f_coord, cand_coord)
+            sea_nm = port_utils.get_distance_nm(origin, cand) if origin else None
+            transit = port_utils.estimate_transit_days(origin, cand) if origin else None
+            rate_tpd = (info or {}).get("cargo_handling_rate_tpd") or 8000
+            discharge = round(cargo / rate_tpd, 2) if info else None
+            extra_transit = round(transit - base_transit, 1) if transit is not None and base_transit is not None else None
+            extra_handling = round(discharge - base_discharge, 2) if discharge is not None else None
+
+            cong = ps.congestion_assumption(radar_by_port.get(cand), (info or {}).get("typical_congestion"))
+            cl = lanes.get(cand)
+            fr = {"rate_usd_per_ton": None, "delta_usd_per_ton": None, "total_impact_usd": None,
+                  "risk": None, "source": None}
+            if cl is not None:
+                fr.update(rate_usd_per_ton=round(cl["rate"], 2), risk=cl["risk"], source="route_freight_model")
+                if base_lane is not None:
+                    d = round(cl["rate"] - base_lane["rate"], 2)
+                    fr.update(delta_usd_per_ton=d, total_impact_usd=round(d * cargo, 0))
+
+            options.append({
+                "port": cand,
+                "country": (info or {}).get("country"),
+                "lat": cand_coord[0] if cand_coord else None,
+                "lon": cand_coord[1] if cand_coord else None,
+                "feasible": bool(feasible),
+                "vessel": {
+                    "class": chosen["vessel_class"] if chosen else None,
+                    "feasible_classes": classes,
+                    "planned_vessel": planned,
+                    "keeps_planned_vessel": bool(planned and planned in classes),
+                    "draft_margin_m": draft_m, "loa_margin_m": loa_m, "margin_ratio": margin,
+                    "port_max_draft_m": (info or {}).get("max_draft_m"),
+                    "port_max_loa_m": (info or {}).get("max_loa_m"),
+                    "rejection_reason": reason,
+                },
+                "freight": fr,
+                "congestion": cong,
+                "delay": {
+                    "extra_transit_days": extra_transit,
+                    "extra_handling_days": extra_handling,
+                    "congestion_days": cong["delay_days"],
+                    "total_days": round(
+                        max(extra_transit or 0.0, 0.0) + max(extra_handling or 0.0, 0.0) + cong["delay_days"], 1),
+                },
+                "handling": {
+                    "rate_tpd": (info or {}).get("cargo_handling_rate_tpd"),
+                    "berths": (info or {}).get("berths"),
+                    "discharge_days": discharge,
+                },
+                "distance": {"from_failed_nm": dist_failed, "sea_nm_from_origin": sea_nm},
+                "data_status": (info or {}).get("data_status"),
+            })
+
+        ordered = ps.rank_options(options)
+        origin_blocked = bool(ordered) and not any(o["feasible"] for o in ordered) and all(
+            str(o["vessel"].get("rejection_reason") or "").startswith("Blocked by the loading port") for o in ordered
+            if o["vessel"].get("rejection_reason"))
+        if origin_blocked:
+            notes.append(f"Loading port {origin} cannot handle any vessel that can carry this cargo, "
+                         "so no discharge port can work. Change the loading port, vessel or parcel size.")
+        f_cong = ps.congestion_assumption(radar_by_port.get(failed), (failed_info or {}).get("typical_congestion"))
+        if not (origin and commodity):
+            notes.append("Give a loading port and commodity to include freight-rate impact and sailing-time change.")
+        elif base_lane is None:
+            notes.append(f"No route-freight forecast for {origin} \u2192 {failed}; freight impact is not shown.")
+        return {
+            "failed_port": failed,
+            "failed_port_info": {
+                "country": (failed_info or {}).get("country"),
+                "lat": f_coord[0] if f_coord else None, "lon": f_coord[1] if f_coord else None,
+                "congestion": f_cong,
+                "max_draft_m": (failed_info or {}).get("max_draft_m"),
+            },
+            "cargo_weight_tons": cargo,
+            "commodity": commodity,
+            "origin_port": origin,
+            "shipment_date": str(when),
+            "planned_vessel": planned,
+            "baseline": {
+                "rate_usd_per_ton": round(base_lane["rate"], 2) if base_lane else None,
+                "transit_days": base_transit, "discharge_days": base_discharge,
+            },
+            "live_ais_used": live_ais,
+            "options": ordered,
+            "recommendation": (
+                f"No substitute port can help: the loading port {origin} cannot handle any vessel that can carry "
+                f"{cargo:,.0f} t. Change the loading port, vessel or parcel size first."
+                if origin_blocked else ps.build_recommendation(failed, ordered)),
+            "map": ps.build_map({"port": failed, "lat": f_coord[0] if f_coord else None,
+                                 "lon": f_coord[1] if f_coord else None}, ordered),
+            "weights": ps.DEFAULT_WEIGHTS,
+            "assumptions": ps.ASSUMPTIONS,
+            "notes": notes,
+        }
+
+    def _canonical_origin(self, name):
+        want = self._norm_port_name(name)
+        for cand in self.meta.get("origins", []) or []:
+            if want == self._norm_port_name(cand):
+                return cand
+        return str(name).strip()
+
+    # ------------------------------------------------------------------
+    # Disruption Engine (Step 2): wires app/disruption_engine.py into the
+    # route forecast (freight impact on the affected lane) and, when the
+    # disrupted port is a discharge port, the Port Substitution Engine
+    # (ranked alternatives). See app/disruption_engine.py's docstring for
+    # what the impact numbers do and do not represent.
+    # ------------------------------------------------------------------
+    def _is_known_destination(self, name):
+        want = self._norm_port_name(name)
+        for cand in self._known_destinations():
+            info = port_utils.get_port(cand) or {}
+            if want in (self._norm_port_name(cand), self._norm_port_name(info.get("alias"))):
+                return True
+        return False
+
+    def _is_known_origin(self, name):
+        want = self._norm_port_name(name)
+        return any(self._norm_port_name(cand) == want for cand in (self.meta.get("origins") or []))
+
+    def _port_role(self, name):
+        """(canonical_name, role) where role is 'destination', 'origin', or
+        'unknown'. Membership in the project's own origin/destination lists
+        decides the role — NOT merely whether the port has infrastructure
+        data on file, since a loading port like Newcastle also has a
+        PORT_INFRA record and would otherwise be misread as a destination."""
+        if self._is_known_destination(name):
+            return self._canonical_destination(name), "destination"
+        if self._is_known_origin(name):
+            return self._canonical_origin(name), "origin"
+        return str(name).strip(), "unknown"
+
+    def simulate_disruption(self, req):
+        key_parts = (
+            str(req.event_type), str(req.port), float(req.severity), req.duration_days,
+            str(req.origin_port or ""), str(req.destination_port or ""), str(req.commodity or ""),
+            str(req.shipment_date or date.today()), float(req.cargo_weight_tons),
+            req.stockpile_buffer_days, bool(req.include_alternatives),
+            tuple(self.meta.get("destinations", [])), tuple(self.meta.get("origins", [])),
+        )
+        return self._decision_cached("disruption", key_parts, lambda: self._simulate_disruption_impl(req))
+
+    def _simulate_disruption_impl(self, req):
+        from app import disruption_engine as de
+
+        if req.event_type not in de.EVENT_PROFILES:
+            raise ValueError(
+                f"Unknown event type '{req.event_type}'. Known types: "
+                f"{', '.join(sorted(de.EVENT_PROFILES))}."
+            )
+        port, role = self._port_role(req.port)
+        port_info = port_utils.get_port(port)
+        if port_info is None:
+            raise ValueError(f"Unknown port '{req.port}': no infrastructure data on file.")
+
+        return self._build_disruption_response(
+            event_type=req.event_type, port=port, role=role, port_info=port_info,
+            severity_fraction=float(req.severity) / 100.0, source="simulated",
+            duration_days=req.duration_days, stockpile_buffer_days=req.stockpile_buffer_days,
+            origin_port_raw=req.origin_port, destination_port_raw=req.destination_port,
+            commodity_raw=req.commodity, shipment_date=req.shipment_date,
+            cargo_weight_tons=req.cargo_weight_tons, include_alternatives=req.include_alternatives,
+        )
+
+    # ---- Live mode (Step 4): same engine, severity from marine_weather.py --
+    def live_disruption(self, req):
+        key_parts = (
+            str(req.port), req.duration_days, str(req.origin_port or ""), str(req.destination_port or ""),
+            str(req.commodity or ""), str(req.shipment_date or date.today()), float(req.cargo_weight_tons),
+            req.stockpile_buffer_days, bool(req.include_alternatives),
+            tuple(self.meta.get("destinations", [])), tuple(self.meta.get("origins", [])),
+            # Short TTL cache key includes a 5-minute time bucket so a stale
+            # marine reading isn't served forever, without hammering the
+            # weather API on every page view either.
+            int(time.time() // 300),
+        )
+        return self._decision_cached("live_disruption", key_parts, lambda: self._live_disruption_impl(req))
+
+    def _live_disruption_impl(self, req):
+        from app import disruption_engine as de
+        from app import marine_weather as mw
+        try:
+            from app.ais_stream import PORT_COORDS as coords
+        except Exception:
+            coords = {}
+
+        port, role = self._port_role(req.port)
+        port_info = port_utils.get_port(port)
+        if port_info is None:
+            raise ValueError(f"Unknown port '{req.port}': no infrastructure data on file.")
+        coord = coords.get(port)
+        if coord is None:
+            raise ValueError(f"No coordinates on file for '{port}'; live conditions cannot be fetched for it.")
+
+        live = mw.get_live_assessment(coord[0], coord[1])
+        if live["severity"] is None:
+            raise ValueError(
+                f"Live marine conditions are currently unavailable for {port} "
+                f"({live['conditions'].get('error') or 'no data returned'}). Try again shortly, or use Simulate mode."
+            )
+
+        response = self._build_disruption_response(
+            event_type="extreme_weather", port=port, role=role, port_info=port_info,
+            severity_fraction=live["severity"], source="live",
+            duration_days=req.duration_days, stockpile_buffer_days=req.stockpile_buffer_days,
+            origin_port_raw=req.origin_port, destination_port_raw=req.destination_port,
+            commodity_raw=req.commodity, shipment_date=req.shipment_date,
+            cargo_weight_tons=req.cargo_weight_tons, include_alternatives=req.include_alternatives,
+        )
+        response["live_conditions"] = live
+        return response
+
+    def _build_disruption_response(
+        self, *, event_type, port, role, port_info, severity_fraction, source,
+        duration_days, stockpile_buffer_days, origin_port_raw, destination_port_raw,
+        commodity_raw, shipment_date, cargo_weight_tons, include_alternatives,
+    ):
+        """Shared tail of both the Simulate and Live disruption paths: run the
+        impact model, price the lane if one is given, and (for a discharge
+        port) compare waiting it out against the best alternative port. Only
+        the severity value and its `source` label differ between the two
+        callers — see app/disruption_engine.py's module docstring."""
+        from app import disruption_engine as de
+
+        result = de.assess_disruption(
+            event_type, port, severity_fraction, port_info, source=source,
+            duration_days=duration_days, stockpile_buffer_days=stockpile_buffer_days,
+        )
+
+        # Default the missing end of the lane to the disrupted port itself,
+        # so "a cyclone at Paradip" alone is enough to price the Paradip leg
+        # once a commodity is picked, without re-typing the port just chosen.
+        origin = self._canonical_origin(origin_port_raw) if origin_port_raw else (port if role == "origin" else None)
+        destination = self._canonical_destination(destination_port_raw) if destination_port_raw else (port if role == "destination" else None)
+        commodity = (commodity_raw or "").strip() or None
+
+        lane = None
+        notes = []
+        if origin and destination and commodity:
+            when = shipment_date or date.today()
+            try:
+                base = self._route_forecast(origin, destination, commodity, when)
+                base_rate = float(base["forecast"])
+                pressure = result["freight_pressure_pct"]
+                adjusted_rate = round(base_rate * (1.0 + pressure), 2)
+                delta = round(adjusted_rate - base_rate, 2)
+                lane = {
+                    "origin_port": origin, "destination_port": destination, "commodity": commodity,
+                    "baseline_rate_usd_per_ton": round(base_rate, 2),
+                    "adjusted_rate_usd_per_ton": adjusted_rate,
+                    "freight_pressure_pct": pressure,
+                    "delta_usd_per_ton": delta,
+                    "total_impact_usd": round(delta * float(cargo_weight_tons), 0),
+                    "note": (
+                        "The disruption is applied as a flat freight-pressure uplift on top of the "
+                        "model's own forecast for this lane; it does not re-run the forecast model itself."
+                    ),
+                }
+            except Exception:
+                notes.append(f"No route-freight forecast for {origin} \u2192 {destination}; freight impact is not shown.")
+        elif not (origin and destination):
+            notes.append(
+                "Give both a loading and a discharge port (or leave one blank to default to the "
+                f"disrupted port, {port}) plus a commodity to see freight-rate impact on a lane."
+            )
+        elif not commodity:
+            notes.append("Give a commodity to see freight-rate impact on this lane.")
+
+        alternatives = None
+        decision = None
+        if role == "destination" and include_alternatives:
+            try:
+                from app.schemas import PortSubstitutionRequest
+                sub_req = PortSubstitutionRequest(
+                    failed_port=port, cargo_weight_tons=cargo_weight_tons, commodity=commodity,
+                    origin_port=origin, shipment_date=shipment_date, use_live_ais=False,
+                )
+                alternatives = self.port_substitution(sub_req)
+                best = next((o for o in alternatives["options"] if o["feasible"]), None)
+                wait_delta = lane["delta_usd_per_ton"] if lane else None
+                alt_delta = best["freight"]["delta_usd_per_ton"] if best else None
+                cargo = float(cargo_weight_tons)
+                decision = {
+                    "cargo_weight_tons": cargo,
+                    "wait": {
+                        "port": port,
+                        "expected_delay_days": result["total_eta_impact_days"],
+                        "freight_delta_usd_per_ton": wait_delta,
+                        # Total $ exposure on this parcel if the plan stays as-is and the
+                        # disruption's freight pressure holds — same calc as lane.total_impact_usd,
+                        # duplicated here so a caller with only `decision` (no `lane`) still gets it.
+                        "freight_impact_usd": (round(wait_delta * cargo, 0) if wait_delta is not None else None),
+                    },
+                    "alternative": ({
+                        "port": best["port"],
+                        "expected_delay_days": best["delay"]["total_days"],
+                        "freight_delta_usd_per_ton": alt_delta,
+                        "freight_impact_usd": (round(alt_delta * cargo, 0) if alt_delta is not None else None),
+                        "distance_from_disrupted_port_nm": best["distance"]["from_failed_nm"],
+                    } if best else None),
+                }
+            except Exception as exc:
+                notes.append(f"Could not compute alternative discharge ports for this disruption: {exc}")
+        elif role == "origin" and include_alternatives:
+            notes.append(
+                f"{port} is a loading port; to compare alternative loading ports for this lane, use "
+                "compare-origins directly (its forecasts do not yet include this disruption's freight pressure)."
+            )
+
+        return {
+            "port": port,
+            "port_role": role,
+            "disruption": result,
+            "lane": lane,
+            "alternatives": alternatives,
+            "decision": decision,
+            "notes": notes,
+        }
+
     def compare_origins(self, req):
+        key_parts = (
+            tuple(self.meta.get("origins", [])),
+            str(req.commodity), str(req.destination_port),
+            str(req.shipment_date), float(req.cargo_weight_tons),
+            getattr(req, "vessel_type", None), getattr(req, "contract_duration_months", None),
+            getattr(req, "total_program_tons", None),
+        )
+        return self._decision_cached("compare", key_parts, lambda: self._compare_origins_impl(req))
+
+    def _compare_origins_impl(self, req):
         """Rank every known loading port for the same cargo/destination/date.
 
         HISTORY: this used to share ONE destination-only BDRY forecast
@@ -548,7 +1131,11 @@ class ModelBundle:
             })
 
         results, errors = [], []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(origins) or 1)) as pool:
+        # Each row is dominated by I/O (a lane model load on cache miss,
+        # plus an optional AIS lookup) rather than CPU work, so it's worth
+        # running every origin concurrently rather than throttling to a
+        # small worker count sized for CPU-bound work.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(origins) or 1, 8)) as pool:
             for kind, row in pool.map(build_row, origins):
                 (results if kind == "ok" else errors).append(row)
 
@@ -574,6 +1161,15 @@ class ModelBundle:
         }
 
     def idle_alternatives(self, req):
+        key_parts = (
+            tuple(self.meta.get("origins", [])), tuple(self.meta.get("commodities", [])),
+            str(req.current_port), getattr(req, "vessel_type", None),
+            str(getattr(req, "commodity", None) or ""),
+            getattr(req, "cargo_weight_tons", None), date.today().isoformat(),
+        )
+        return self._decision_cached("idle", key_parts, lambda: self._idle_alternatives_impl(req))
+
+    def _idle_alternatives_impl(self, req):
         """Rank next-best loading ports for an idle vessel.
 
         HISTORY: this used to batch a BDRY forecast + risk-classifier call
@@ -583,6 +1179,7 @@ class ModelBundle:
         candidates with no route-freight coverage for that lane/commodity
         are skipped and reported in `errors` instead of falling back.
         """
+        import concurrent.futures
         origins = [
             origin for origin in self.meta.get("origins", [])
             if str(origin).strip().lower() != str(req.current_port).strip().lower()
@@ -605,45 +1202,64 @@ class ModelBundle:
             ballast_days = port_utils.estimate_transit_days(origin, req.current_port)
             jobs.append((origin, origin_info, distance_nm, ballast_days))
 
+        # Flatten to one job per (origin, commodity) pair — up to 10 origins
+        # x 3 commodities when no commodity filter is given — and run them
+        # concurrently. This used to be a plain nested for-loop, so all ~30
+        # combinations ran one at a time; that was the actual source of the
+        # slowness (worse than compare-origins, which already parallelized
+        # its equivalent fan-out). Safe to do here for the same reason it
+        # was safe there: the per-lane model cache underneath _route_forecast
+        # loads outside its lock now, so concurrent lookups for different
+        # lanes genuinely run in parallel instead of queueing.
+        def build_candidate(job):
+            origin, origin_info, distance_nm, ballast_days, commodity = job
+            try:
+                core = self._route_forecast(origin, req.current_port, commodity, shipment_date)
+            except ValueError as exc:
+                return ("error", {"origin_port": origin, "commodity": commodity, "error": str(exc)})
+
+            rate = core["forecast"]
+            risk = core["risk"]
+
+            recommended_vessel = None
+            try:
+                feasible_candidates, _rejected = port_utils.feasible_vessels_both_ports(cargo_weight, origin_info, dest_info, origin_name=origin, destination_name=req.current_port)
+                if feasible_candidates:
+                    recommendation = port_utils.recommend_vessel(
+                        cargo_weight,
+                        ((dest_info or {}).get("cargo_depth_m") or (dest_info or {}).get("channel_depth_m") or (dest_info or {}).get("max_draft_m")),
+                        port_name=req.current_port, origin_port_name=origin,
+                        predicted_rate=rate, previous_rate=core["prev"],
+                    )
+                    recommended_vessel = recommendation.get("recommended_vessel")
+            except Exception:
+                recommended_vessel = None
+
+            score = rate / (1 + (ballast_days or 0) / 30.0)
+            return ("ok", {
+                "origin_port": origin,
+                "commodity": commodity,
+                "predicted_freight_rate_usd_per_ton": round(float(rate), 2),
+                "risk_label": risk,
+                "recommended_vessel_type": recommended_vessel or vessel_type,
+                "ballast_distance_nm": distance_nm,
+                "estimated_ballast_days": ballast_days,
+                "score": round(float(score), 3),
+                "note": build_idle_reposition_note(origin=origin, commodity=commodity, current_port=req.current_port),
+            })
+
+        pairs = [
+            (origin, origin_info, distance_nm, ballast_days, commodity)
+            for origin, origin_info, distance_nm, ballast_days in jobs
+            for commodity in commodities
+        ]
+
         candidates = []
         errors = []
-        for origin, origin_info, distance_nm, ballast_days in jobs:
-            for commodity in commodities:
-                try:
-                    core = self._route_forecast(origin, req.current_port, commodity, shipment_date)
-                except ValueError as exc:
-                    errors.append({"origin_port": origin, "commodity": commodity, "error": str(exc)})
-                    continue
-
-                rate = core["forecast"]
-                risk = core["risk"]
-
-                recommended_vessel = None
-                try:
-                    feasible_candidates, _rejected = port_utils.feasible_vessels_both_ports(cargo_weight, origin_info, dest_info)
-                    if feasible_candidates:
-                        recommendation = port_utils.recommend_vessel(
-                            cargo_weight,
-                            ((dest_info or {}).get("cargo_depth_m") or (dest_info or {}).get("channel_depth_m") or (dest_info or {}).get("max_draft_m")),
-                            port_name=req.current_port, origin_port_name=origin,
-                            predicted_rate=rate, previous_rate=core["prev"],
-                        )
-                        recommended_vessel = recommendation.get("recommended_vessel")
-                except Exception:
-                    recommended_vessel = None
-
-                score = rate / (1 + (ballast_days or 0) / 30.0)
-                candidates.append({
-                    "origin_port": origin,
-                    "commodity": commodity,
-                    "predicted_freight_rate_usd_per_ton": round(float(rate), 2),
-                    "risk_label": risk,
-                    "recommended_vessel_type": recommended_vessel or vessel_type,
-                    "ballast_distance_nm": distance_nm,
-                    "estimated_ballast_days": ballast_days,
-                    "score": round(float(score), 3),
-                    "note": build_idle_reposition_note(origin=origin, commodity=commodity, current_port=req.current_port),
-                })
+        if pairs:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(pairs), 8)) as pool:
+                for kind, row in pool.map(build_candidate, pairs):
+                    (candidates if kind == "ok" else errors).append(row)
 
         candidates.sort(key=lambda c: c["score"], reverse=True)
         top = candidates[:5]

@@ -22,10 +22,8 @@ function validateForecast(req, res, next) {
   const SHIPMENT_MODES = new Set(["Bulk Carrier", "Charter"]);
 
   if (!COMMODITIES.has(commodity)) errors.push("commodity must be Coal, Iron Ore, or Bulk Minerals & Ores");
-  // BUGFIX: this used to push both "origin_port is required" AND
-  // "origin_port must be one of: ..." whenever origin_port was missing,
-  // showing the user two redundant/confusing errors for one problem.
-  // Match the single-message pattern already used for destination_port.
+  // Single message for a missing/invalid origin_port, matching the
+  // pattern used for destination_port below.
   if (!origin_port || typeof origin_port !== "string" || !origin_port.trim() || !ORIGIN_PORTS.has(origin_port)) {
     errors.push(
       `origin_port must be one of: ${[...ORIGIN_PORTS].join(", ")}`

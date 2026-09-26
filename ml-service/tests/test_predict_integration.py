@@ -106,14 +106,13 @@ class TestPredictIntegration(unittest.TestCase):
         reported as low confidence (it's explicitly synthetic development
         data, never to be overstated as verified) — and data_source_level
         must agree with forecast_type rather than naming a fallback tier
-        that no longer exists (the old BDRY destination/commodity/
-        global-proxy hierarchy was removed with the BDRY pipeline itself)."""
+        that doesn't exist for this model."""
         exact = self.bundle.predict(make_request(destination_port="Paradip", commodity="Coal"))
         self.assertEqual(exact["data_source_level"], exact["forecast_type"])
         self.assertEqual(exact["data_confidence"], "low")
 
-        # An uncovered lane is no longer silently answered via a fallback
-        # tier — it's refused outright (see test_lane_with_no_route_freight_coverage_is_refused).
+        # An uncovered lane is refused outright rather than answered via a
+        # fallback tier (see test_lane_with_no_route_freight_coverage_is_refused).
         with self.assertRaises(ValueError):
             self.bundle.predict(make_request(
                 destination_port="Nonexistent Port XYZ", commodity="Nonexistent Commodity XYZ",

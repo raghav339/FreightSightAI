@@ -8,7 +8,7 @@ const api = axios.create({
 const ML_BACKED_PATH_HINTS = [
   "/forecast", "/route-forecast", "/coa-optimize", "/compare-origins",
   "/idle-alternatives", "/whatif", "/routes", "/vessels", "/ports",
-  "/dashboard-summary", "/ais/",
+  "/dashboard-summary", "/ais/", "/disruption/", "/calibration/",
 ];
 // These two fan out across every loading port on ml-service (11 today),
 // each doing a model call + a live AIS lookup — genuinely slower than a

@@ -1,6 +1,7 @@
 import { Inbox } from "lucide-react";
 import { Card } from "./ui/card.jsx";
 import { Badge } from "./ui/badge.jsx";
+import DecisionBriefButton from "./DecisionBriefButton.jsx";
 
 const RISK_VARIANT = { low: "low", medium: "medium", high: "high" };
 
@@ -11,10 +12,11 @@ export default function HistoryTable({ rows }) {
     "Route",
     "Mode",
     "Cargo (t)",
-    "Forecast",
+    "Forecast ($/t)",
     "Risk",
     "Vessel",
     "Charter window",
+    "Decision brief",
   ];
 
   if (!Array.isArray(rows) || rows.length === 0) {
@@ -31,7 +33,7 @@ export default function HistoryTable({ rows }) {
   return (
     <Card className="overflow-hidden p-0">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px] border-collapse text-sm">
+        <table className="w-full min-w-[1040px] border-collapse text-sm">
           <thead>
             <tr className="bg-hull-900/60">
               {columns.map((h) => (
@@ -57,13 +59,20 @@ export default function HistoryTable({ rows }) {
                   {Number(r.cargo_weight_tons).toLocaleString()}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 font-mono text-xs font-semibold text-signal">
-                  ${Number(r.predicted_freight_rate_usd_per_ton).toFixed(2)}
+                  ${Number(r.predicted_freight_rate_usd_per_ton).toFixed(2)}/t
                 </td>
                 <td className="whitespace-nowrap px-4 py-3">
                   <Badge variant={RISK_VARIANT[r.risk_label] || "neutral"}>{r.risk_label?.toUpperCase()}</Badge>
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-slate-400">{r.recommended_vessel_type}</td>
                 <td className="whitespace-nowrap px-4 py-3 text-slate-400">{r.recommended_charter_window}</td>
+                <td className="whitespace-nowrap px-4 py-3">
+                  <DecisionBriefButton
+                    recordId={r.result_id}
+                    cargo={r.cargo_weight_tons}
+                    duration={r.contract_duration_months}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>

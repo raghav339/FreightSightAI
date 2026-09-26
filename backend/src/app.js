@@ -13,7 +13,9 @@ const authRouter = require("./routes/auth");
 const analysisRouter = require("./routes/analysis");
 const pdfRouter = require("./routes/pdf");
 const decisionBriefRouter = require("./routes/decisionBrief");
+const disruptionBriefRouter = require("./routes/disruptionBrief");
 const aisRouter = require("./routes/ais");
+const calibrationRouter = require("./routes/calibration");
 
 const app = express();
 
@@ -57,7 +59,9 @@ app.use("/api", metaRouter);
 app.use("/api", analysisRouter);
 app.use("/api", pdfRouter);
 app.use("/api", decisionBriefRouter);
+app.use("/api", disruptionBriefRouter);
 app.use("/api", aisRouter);
+app.use("/api", calibrationRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: "Not found" });

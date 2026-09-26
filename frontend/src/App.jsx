@@ -10,6 +10,8 @@ import CompareOrigins from "./pages/CompareOrigins.jsx";
 import IdleVesselFinder from "./pages/IdleVesselFinder.jsx";
 import LiveFleetMap from "./pages/LiveFleetMap.jsx";
 import PortRadar from "./pages/PortRadar.jsx";
+import DisruptionSimulator from "./pages/DisruptionSimulator.jsx";
+import Calibration from "./pages/Calibration.jsx";
 import History from "./pages/History.jsx";
 import About from "./pages/About.jsx";
 import Login from "./pages/Login.jsx";
@@ -39,6 +41,8 @@ export default function App() {
               <Route path="/idle-vessel" element={<PageShell><IdleVesselFinder /></PageShell>} />
               <Route path="/live-fleet" element={<PageShell><LiveFleetMap /></PageShell>} />
               <Route path="/port-radar" element={<PageShell><PortRadar /></PageShell>} />
+              <Route path="/disruption" element={<PageShell><DisruptionSimulator /></PageShell>} />
+              <Route path="/calibration" element={<PageShell><Calibration /></PageShell>} />
               <Route path="/history" element={<PageShell><History /></PageShell>} />
               <Route path="/about" element={<PageShell><About /></PageShell>} />
               <Route path="/login" element={<PageShell><Login /></PageShell>} />

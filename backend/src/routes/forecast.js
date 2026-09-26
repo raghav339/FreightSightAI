@@ -155,17 +155,15 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
         // (3) Explainability — top global drivers + per-request local drivers
         JSON.stringify(mlResult.feature_importance ?? []),
         JSON.stringify(mlResult.top_drivers ?? []),
-        // (Phase 2/3) proxy vs route-specific transparency — the ML
-        // service always computes these; they were previously silently
-        // dropped here before ever reaching storage or the frontend.
+        // Proxy vs route-specific transparency, computed by the ML service.
         mlResult.forecast_type ?? null,
         mlResult.data_confidence ?? null,
         mlResult.data_source_level ?? null,
-        // (Phase 6) both-port vessel feasibility outcome
+        // Both-port vessel feasibility outcome.
         mlResult.vessel_status ?? null,
         mlResult.vessel_rejection_reason ?? null,
         JSON.stringify(mlResult.rejected_vessel_types ?? []),
-        // (Phase 4) genuine multi-horizon forecast curve
+        // Multi-horizon forecast curve (H+1/H+2/H+3).
         JSON.stringify(mlResult.forecast_curve ?? []),
         // Preserve decision-quality explanation/disclaimer fields in history.
         mlResult.recommended_vessel_reason ?? null,
@@ -226,31 +224,27 @@ router.post("/forecast", decisionLimiter, optionalAuth, validateForecast, async 
     feature_importance: mlResult.feature_importance ?? [],
     top_drivers: mlResult.top_drivers ?? [],
 
-    // (Phase 2/3) proxy vs route-specific transparency — previously
-    // computed by the ML service but silently dropped before reaching the
-    // frontend. See README "Known limitations".
+    // Proxy vs route-specific transparency. See README "Known limitations".
     forecast_type: mlResult.forecast_type,
     data_confidence: mlResult.data_confidence,
     data_source_level: mlResult.data_source_level,
 
-    // (Phase 6) both-port vessel feasibility outcome
+    // Both-port vessel feasibility outcome.
     vessel_status: mlResult.vessel_status,
     vessel_rejection_reason: mlResult.vessel_rejection_reason,
     rejected_vessel_types: mlResult.rejected_vessel_types ?? [],
 
-    // (Phase 4) genuine multi-horizon forecast curve (H+1/H+2/H+3)
+    // Multi-horizon forecast curve (H+1/H+2/H+3).
     forecast_curve: mlResult.forecast_curve ?? [],
 
-    // BUGFIX: previously dropped here — see routes/pdf.js / ResultCards.jsx,
-    // which both already expect these two fields.
+    // routes/pdf.js and ResultCards.jsx both expect these two fields.
     recommended_vessel_reason: mlResult.recommended_vessel_reason ?? null,
     port_data_warning: mlResult.port_data_warning ?? null,
 
-    // cargo_volume_cbm / distance_km / delay_days / shipment_mode are now
-    // actually consumed by the decision engine (see ml-service/app/utils.py
-    // ModelBundle.predict) rather than being accepted-but-unused inputs.
-    // Not yet persisted to forecast_results — history/PDF exports won't
-    // show these until a follow-up migration adds the columns.
+    // cargo_volume_cbm / distance_km / delay_days / shipment_mode are
+    // consumed by the decision engine (see ml-service/app/utils.py
+    // ModelBundle.predict). Not yet persisted to forecast_results —
+    // history/PDF exports won't show these until a migration adds the columns.
     estimated_transit_days: mlResult.estimated_transit_days ?? null,
     transit_distance_source: mlResult.transit_distance_source ?? null,
     transit_note: mlResult.transit_note ?? null,

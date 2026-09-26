@@ -146,5 +146,29 @@ class TestFeasibleVesselsBothPorts(unittest.TestCase):
         self.assertGreaterEqual(len(feasible), 1)
 
 
+class TestVesselExplanationBlamesTheRightPort(unittest.TestCase):
+    """Regression: the explanation used to say "Handysize's typical draft of
+    10.0 m exceeds the destination port depth of 15.0 m" even though the
+    class was actually rejected at the ORIGIN (Beira, 8.0 m usable depth)."""
+
+    def test_origin_draft_failure_is_not_blamed_on_destination(self):
+        rec = port_utils.recommend_vessel(
+            10000, 15.0, port_name="Gopalpur", origin_port_name="Beira",
+            predicted_rate=9.2, previous_rate=10.5,
+        )
+        text = rec["explanation"]
+        self.assertNotIn("exceeds the destination port depth", text)
+        self.assertIn("Beira", text)
+        self.assertIn("usable depth (8.0 m)", text)
+
+    def test_rejection_reasons_name_the_limiting_port(self):
+        ok, reason = port_utils.check_vessel_port_compatibility(
+            "Capesize", {"max_draft_m": 8.0}, label="origin port", port_name="Beira"
+        )
+        self.assertFalse(ok)
+        self.assertIn("Origin port draft limitation (Beira)", reason)
+        self.assertIn("Beira's usable depth", reason)
+
+
 if __name__ == "__main__":
     unittest.main()

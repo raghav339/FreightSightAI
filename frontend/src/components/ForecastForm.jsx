@@ -6,6 +6,7 @@ import { Field, Input, Select } from "./ui/field.jsx";
 import { Button } from "./ui/button.jsx";
 import useNetworkStatus from "../hooks/useNetworkStatus.js";
 import {
+  getCachedLanes,
   getClosestForecast,
   getExactForecast,
   getMeta,
@@ -249,12 +250,39 @@ export default function ForecastForm({ onResult }) {
       {metaLoading && !metaError && (
         <div className="shipment-sheet__service-note"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Connecting to the forecasting service…</div>
       )}
-      {metaOffline && !metaError && (
-        <div className="shipment-sheet__service-note">
-          <WifiOff className="h-3.5 w-3.5" />
-          <span>Offline — using the route list saved from your last connected session. Submitting will look up a cached forecast for this route.</span>
-        </div>
-      )}
+      {metaOffline && !metaError && (() => {
+        const lanes = getCachedLanes();
+        return (
+          <div className="shipment-sheet__service-note shipment-sheet__service-note--offline">
+            <WifiOff className="h-3.5 w-3.5" />
+            <div>
+              <span>Offline — using the route list saved from your last connected session.</span>
+              {lanes.length > 0 ? (
+                <>
+                  <div className="mt-1.5">
+                    {"These lanes have a cached forecast and will resolve instantly:"}
+                  </div>
+                  <ul className="mt-1 flex flex-col gap-0.5">
+                    {lanes.slice(0, 8).map((l) => (
+                      <li key={`${l.origin_port}|${l.destination_port}|${l.commodity}`} className="font-mono text-[11px]">
+                        {l.origin_port} → {l.destination_port} · {l.commodity}
+                      </li>
+                    ))}
+                  </ul>
+                  {lanes.length > 8 && (
+                    <div className="mt-1 text-[11px] opacity-75">+{lanes.length - 8} more cached lane(s)</div>
+                  )}
+                  <div className="mt-1.5">{"Anything else will need a live connection."}</div>
+                </>
+              ) : (
+                <div className="mt-1.5">
+                  {"No forecasts have been cached on this device yet, so submitting now won't return a result. Reconnect once to cache a lane."}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
       {metaError && (
         <div className="shipment-sheet__service-note shipment-sheet__service-note--warn">
           <AlertTriangle className="h-3.5 w-3.5" />

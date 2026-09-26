@@ -14,10 +14,9 @@ export default function WakingBanner() {
     ? "forecasting service is processing the sheet"
     : "forecasting service is waking from an idle instance";
 
-  // NOTE: no longer owns its own fixed positioning — StatusBanners (in
-  // App.jsx) stacks this alongside ConnectionBanner in one fixed column so
-  // an ML cold-start and a dropped connection can both show at once
-  // without overlapping each other.
+  // Positioning is owned by StatusBanners (in App.jsx), which stacks this
+  // alongside ConnectionBanner in one fixed column so an ML cold-start and
+  // a dropped connection can both show at once without overlapping.
   return (
     <div role="status" aria-live="polite" className="pointer-events-auto flex max-w-[min(92vw,760px)] items-center gap-3 border border-rule/55 bg-parchment/96 px-4 py-2.5 font-mono text-[9px] uppercase tracking-[0.15em] text-ink shadow-[0_2px_0_rgb(255_255_255_/_0.45)] backdrop-blur-[2px]">
       <span className="relative flex h-2.5 w-2.5 shrink-0">

@@ -1,19 +1,14 @@
 """Route-level freight model.
 
-HISTORY / DATA CONTRACT
-------------------------
-This module previously fell back to an AIS+BDRY "dry-bulk market proxy"
-model (route_model_h1/2/3.joblib, trained against BDRY ETF price) whenever
-a lane had no synthetic/verified route-rate observations. That fallback has
-been removed. This module now serves ONLY the route-freight model trained
-on synthetic (or, once available, verified) route freight-rate observations
-in route_freight_model.py.
-
-Practical effect: a route/commodity combination that has no eligible
-route-freight model no longer silently degrades to a BDRY-derived market
-proxy. predict() raises ValueError instead, and callers (app/main.py)
-surface that as a 400 so the caller knows the lane simply isn't covered by
-the route-freight dataset yet.
+DATA CONTRACT
+-------------
+This module serves only the route-freight model trained on synthetic (or,
+once available, verified) route freight-rate observations in
+route_freight_model.py — there is no market-proxy fallback. A route/
+commodity combination with no eligible route-freight model raises
+ValueError from predict(); callers (app/main.py) surface that as a 400 so
+the caller knows the lane simply isn't covered by the route-freight
+dataset yet.
 """
 from __future__ import annotations
 from pathlib import Path

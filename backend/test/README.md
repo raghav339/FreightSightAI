@@ -40,6 +40,14 @@ only the fixture rows it created.
 - `decisionBriefRoute.test.js` — `GET /api/forecast/:resultId/decision-brief`: PDF
   response, server-side recompute (ml-service mocked), scenario validation, ownership 404,
   partial ml-service failure.
+- `disruptionBriefLogic.test.js` — Disruption Decision Brief's wait-vs-divert call
+  (test/fixtures/disruptionBriefFixtures.js): divert vs. wait thresholds, stockpile-buffer
+  breach language, both Simulate and Live result shapes. Pure functions; no DB, ml-service,
+  or PDF rendering involved.
+- `disruptionBriefRoute.test.js` — `POST /api/disruption/decision-brief`: PDF response
+  against the real Express app with ml-service mocked (`axios`), covering both `mode:
+  "simulate"` and `mode: "live"` request shapes, required-field validation, and ml-service
+  error pass-through.
 - `whatif.test.js` — `POST /api/whatif`: validates required fields,
   confirms it proxies to ml-service's `/recommend` (which runs the same
   underlying `ModelBundle.predict()` as `/forecast` — see

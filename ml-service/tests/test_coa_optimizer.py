@@ -89,5 +89,28 @@ class COAOptimizerTests(unittest.TestCase):
             rates[commodity]=out["best_strategy"]["contract_rate_usd_per_ton"]
         self.assertGreater(len(set(rates.values())), 1, f"all commodities priced identically: {rates}")
 
+    def test_cost_tied_candidates_are_tie_broken_by_operational_efficiency(self):
+        # route_model.predict() doesn't take a vessel class, so
+        # expected_freight_cost_usd is identical across vessel classes
+        # whenever a spot rate is supplied (the normal case) — this used to
+        # mean the ranking sort had no tiebreak and silently always picked
+        # Handysize (first in the candidates build order), regardless of it
+        # needing far more voyages than a Panamax/Capesize doing the same
+        # program. Guards against that regressing.
+        req=SimpleNamespace(origin_port="Newcastle",destination_port="Paradip",commodity="Coal",
+            shipment_date=__import__("datetime").date(2026,11,1),current_spot_rate_usd_per_ton=9.5,
+            cargo_weight_tons=None,total_program_tons=1500000,contract_duration_months=12)
+        out=optimize(req,self.rm,port_utils)
+        alts=out["alternatives"]
+        costs={a["expected_freight_cost_usd"] for a in alts}
+        self.assertEqual(len(costs), 1, "expected every candidate's freight cost to be tied for this scenario")
+        best=out["best_strategy"]
+        min_ops_index=min(a["operational_index"] for a in alts)
+        self.assertEqual(
+            best["operational_index"], min_ops_index,
+            f"best_strategy ({best['vessel_type']}) should be the lowest-operational_index option among "
+            f"cost-tied candidates, not whichever vessel class happens to come first",
+        )
+
 if __name__=="__main__":
     unittest.main()

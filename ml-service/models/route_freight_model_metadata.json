@@ -3,7 +3,7 @@
   "schema_version": "1.0",
   "target": "synthetic_route_freight_usd_per_t",
   "data_mode": "synthetic_mvp",
-  "source_file": "/home/claude/FreightSightAI/FreightSightAI/ml-service/data/synthetic/route_freight_observations.csv",
+  "source_file": "ml-service/data/synthetic/route_freight_observations.csv",
   "dataset_sha256": "a93117631eb9cb6e2fe486efe62e3a74063aa391eb4a2f9a722101e81e880bf7",
   "eligible_rows": 46900,
   "verified_rows": 0,

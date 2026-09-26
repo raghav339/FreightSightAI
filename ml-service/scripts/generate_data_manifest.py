@@ -1,4 +1,4 @@
-"""Generate DATASET_MANIFEST.json for a FreightSight data directory (Phase 10).
+"""Generate DATASET_MANIFEST.json for a FreightSight data directory.
 
 Computes real, on-disk statistics for every CSV in the target directory —
 row count, column count, a best-effort coverage period (from any date/year

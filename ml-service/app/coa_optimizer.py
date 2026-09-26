@@ -49,8 +49,8 @@ def optimize(req, route_model: RouteModel, port_utils):
     for cls in ["Handysize","Supramax","Panamax","Capesize"]:
         spec=next((x for x in port_utils.get_vessel_specs() if x["vessel_class"]==cls),None)
         if not spec: continue
-        ok_o,reason_o=port_utils.check_vessel_port_compatibility(cls,origin,label="origin port")
-        ok_d,reason_d=port_utils.check_vessel_port_compatibility(cls,dest,label="destination port")
+        ok_o,reason_o=port_utils.check_vessel_port_compatibility(cls,origin,label="origin port",port_name=req.origin_port)
+        ok_d,reason_d=port_utils.check_vessel_port_compatibility(cls,dest,label="destination port",port_name=req.destination_port)
         if not (ok_o and ok_d):
             # Report both ends when both fail, since a class can be
             # simultaneously too big for the origin and the destination.
@@ -115,8 +115,27 @@ def optimize(req, route_model: RouteModel, port_utils):
         raise ValueError(prefix + (f" {detail}" if detail else ""))
     feasible_schedule = [c for c in candidates if c["schedule_feasible"]]
     ranking_pool = feasible_schedule or candidates
-    ranking_pool.sort(key=lambda x: (x["expected_freight_cost_usd"] if x["expected_freight_cost_usd"] is not None else x["operational_index"]))
+    # BUG FIX: the route model prices a lane, not a vessel class (route_model.predict()
+    # takes no vessel_class argument), so contract_rate_usd_per_ton — and therefore
+    # expected_freight_cost_usd — is identical across every candidate here whenever a
+    # spot rate is supplied. Sorting by cost alone left every tie broken by Python's
+    # stable sort falling back to the candidates list's build order (the fixed
+    # ["Handysize","Supramax","Panamax","Capesize"] loop above), so "best_strategy" was
+    # silently always Handysize whenever it was schedule-feasible — regardless of it
+    # needing far more voyages (and so far more port calls, bunker burn, and schedule
+    # risk) than a Panamax or Capesize doing the same program. operational_index
+    # (voyages x cycle_days) is now the explicit tiebreak, so among cost-tied
+    # candidates the fewer-voyage, shorter-cycle option wins, as it should.
+    ranking_pool.sort(key=lambda x: (
+        x["expected_freight_cost_usd"] if x["expected_freight_cost_usd"] is not None else x["operational_index"],
+        x["operational_index"],
+    ))
     best=ranking_pool[0]
+    # True only when the model's freight cost can't tell these vessel classes apart at
+    # all (the normal case whenever a spot rate is supplied) — surfaced in
+    # recommendation_note below so the pick doesn't read as a cost-driven choice it isn't.
+    cost_values = {c["expected_freight_cost_usd"] for c in ranking_pool if c["expected_freight_cost_usd"] is not None}
+    freight_cost_is_tied = len(ranking_pool) > 1 and len(cost_values) <= 1 and cost_values
     spot_total=float(spot)*total if spot is not None else None
     savings=(spot_total-best["expected_freight_cost_usd"]) if spot_total is not None and best["expected_freight_cost_usd"] is not None and best["schedule_feasible"] else None
     return {
@@ -128,6 +147,10 @@ def optimize(req, route_model: RouteModel, port_utils):
         "estimated_savings_vs_spot_usd":round(savings,2) if savings is not None else None,
         "estimated_savings_vs_spot_pct":round(savings/spot_total*100,2) if savings is not None and spot_total else None,
         "recommendation_note": (
+            "Selected from schedule-feasible vessel strategies, tie-broken by fewest voyage-days, "
+            "because the market-rate forecast does not vary by vessel class so freight cost alone "
+            "does not distinguish them. Savings are shown only when a current spot benchmark is supplied."
+            if best["schedule_feasible"] and spot is not None and freight_cost_is_tied else
             "Selected from schedule-feasible vessel strategies. Savings are shown only when a current spot benchmark is supplied."
             if best["schedule_feasible"] and spot is not None else
             "No vessel strategy fits the full COA within the requested contract window; increase duration, reduce program tonnage, or split the program."

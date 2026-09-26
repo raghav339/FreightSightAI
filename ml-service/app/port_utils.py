@@ -178,24 +178,19 @@ def _load_wpi_expanded_port_infra():
     covers every port referenced anywhere in the app (train.py's
     EAST_COAST + origins), not just the original 18.
 
-    BUGFIX (2026-09-11): this used to unconditionally overwrite any field
-    the WPI extract had a value for, even when port_infra.json already
-    carried an explicit, dated figure for that same field. WPI's depth
-    numbers are a *conservative minimum* from a 5-foot-banded letter code
-    on a navigational-chart index that isn't always current for major bulk
-    terminals -- e.g. it reported 6.4 m for Gladstone (a Capesize coal
-    port whose port-authority procedures manual states ~17 m sailing
-    draft is generally available) and 11.0 m for Paradip (whose inner
-    harbour was dredged to 18.5 m in Aug 2026). Silently overwriting the
-    master figure with that shallower estimate was making real ports look
-    too shallow for their typical vessel class, which is what was
-    producing "no feasible vessel" for most routes.
-
-    Fix: WPI now only ever FILLS a field the master entry doesn't already
-    have a value for -- it enriches gaps, it never overrides a populated
+    WPI only ever FILLS a field the master entry doesn't already have a
+    value for -- it enriches gaps, it never overrides a populated
     master-file figure (verified or not). port_infra.json is the
     reference/master layer per its own docstring; WPI is a fallback, not
-    an override.
+    an override. This matters because WPI's depth numbers are a
+    *conservative minimum* from a 5-foot-banded letter code on a
+    navigational-chart index that isn't always current for major bulk
+    terminals -- e.g. it reports 6.4 m for Gladstone (a Capesize coal port
+    whose port-authority procedures manual states ~17 m sailing draft is
+    generally available) and 11.0 m for Paradip (whose inner harbour was
+    dredged to 18.5 m in Aug 2026). Letting WPI override the master figure
+    would make real ports look too shallow for their typical vessel class,
+    producing "no feasible vessel" for routes that are actually fine.
     """
     p = os.path.join(DATA_DIR, "port_infra_wpi_expanded.json")
     if not os.path.exists(p):
@@ -472,23 +467,30 @@ def get_port(name: str):
     return None
 
 
-def check_vessel_port_compatibility(vessel_type: str, port_info: dict | None, *, label: str = "port"):
-    """(Phase 6) THE canonical vessel/port feasibility check — used for BOTH
-    the origin port and the destination port, so the two ends can never
+def check_vessel_port_compatibility(vessel_type: str, port_info: dict | None, *, label: str = "port", port_name: str | None = None):
+    """The canonical vessel/port feasibility check — used for BOTH the
+    origin port and the destination port, so the two ends can never
     silently apply different rules.
 
     Checks vessel length vs maximum LOA, vessel beam vs maximum beam, and
-    vessel draft vs cargo/channel depth. Unknown constraints are not treated
-    as failures (matches prior behaviour) — a port with no LOA data on file
-    doesn't get an LOA rejection, it just isn't checked on that dimension.
+    vessel draft vs cargo/channel depth. Unknown constraints are not
+    treated as failures — a port with no LOA data on file doesn't get an
+    LOA rejection, it just isn't checked on that dimension.
 
     Returns (ok: bool, reason: str | None). `reason` is None when ok=True,
     and a specific, human-readable explanation (e.g. "Origin port draft
-    limitation") when ok=False — this is what powers Phase 6's
-    rejection_reason field, instead of a bare boolean.
+    limitation") when ok=False, powering the rejection_reason field
+    instead of a bare boolean.
     """
+    # When the caller knows the actual port, name it in the reason so the
+    # user sees WHICH port blocks a vessel (e.g. "Origin port draft
+    # limitation (Beira): ... exceeds Beira's usable depth") instead of an
+    # anonymous "the origin port".
+    tag = f" ({port_name})" if port_name else ""
+    who = f"{port_name}'s" if port_name else f"the {label}'s"
+
     if not port_info:
-        return False, f"No infrastructure data on file for this {label}, so vessel safety there cannot be confirmed."
+        return False, f"No infrastructure data on file for this {label}{tag}, so vessel safety there cannot be confirmed."
 
     spec = VESSEL_LIMIT_SPECS.get(vessel_type)
     if not spec:
@@ -497,16 +499,13 @@ def check_vessel_port_compatibility(vessel_type: str, port_info: dict | None, *,
     max_loa = port_info.get("max_loa_m")
     max_beam = port_info.get("max_beam_m")
 
-    # World Port Index may expose either cargo pier depth or channel depth.
-    # BUGFIX: the production port data (port_infra_wpi_expanded.json, merged
-    # into every port at import time) only ever populates max_draft_m — it
-    # never sets cargo_depth_m/channel_depth_m. Checking only those two
-    # fields meant applicable_depths was always empty for every real port in
-    # the dataset, so this function's draft check silently never ran (LOA
-    # and beam were still enforced, draft was not) — a Capesize vessel could
-    # be shown as feasible at a port only 4-6m deep. Fall back to
-    # max_draft_m so a port with only that field set still gets a real
-    # draft check.
+    # World Port Index may expose either cargo pier depth or channel depth,
+    # but the production port data (port_infra_wpi_expanded.json, merged
+    # into every port at import time) only ever populates max_draft_m.
+    # Fall back to max_draft_m so a port with only that field set still
+    # gets a real draft check — otherwise applicable_depths would be empty
+    # and a Capesize vessel could be shown as feasible at a port only
+    # 4-6m deep.
     cargo_depth = port_info.get("cargo_depth_m")
     channel_depth = port_info.get("channel_depth_m")
     max_draft_field = port_info.get("max_draft_m")
@@ -514,22 +513,22 @@ def check_vessel_port_compatibility(vessel_type: str, port_info: dict | None, *,
 
     if max_loa is not None and spec["max_loa_m"] > max_loa:
         return False, (
-            f"{label.capitalize()} LOA limitation: vessel LOA ({spec['max_loa_m']:.0f} m) "
-            f"exceeds the {label}'s maximum LOA ({max_loa:.0f} m)."
+            f"{label.capitalize()} LOA limitation{tag}: vessel LOA ({spec['max_loa_m']:.0f} m) "
+            f"exceeds {who} maximum LOA ({max_loa:.0f} m)."
         )
 
     if max_beam is not None and spec["max_beam_m"] > max_beam:
         return False, (
-            f"{label.capitalize()} beam limitation: vessel beam ({spec['max_beam_m']:.1f} m) "
-            f"exceeds the {label}'s maximum beam ({max_beam:.1f} m)."
+            f"{label.capitalize()} beam limitation{tag}: vessel beam ({spec['max_beam_m']:.1f} m) "
+            f"exceeds {who} maximum beam ({max_beam:.1f} m)."
         )
 
     if applicable_depths:
         limiting_depth = min(applicable_depths)
         if spec["max_draft_m"] > limiting_depth:
             return False, (
-                f"{label.capitalize()} draft limitation: vessel draft ({spec['max_draft_m']:.1f} m) "
-                f"exceeds the {label}'s usable depth ({limiting_depth:.1f} m)."
+                f"{label.capitalize()} draft limitation{tag}: vessel draft ({spec['max_draft_m']:.1f} m) "
+                f"exceeds {who} usable depth ({limiting_depth:.1f} m)."
             )
 
     return True, None
@@ -546,8 +545,8 @@ def vessel_fits_port(vessel_type: str, port_info: dict | None) -> bool:
     return ok
 
 
-def feasible_vessels_both_ports(cargo_tonnage, origin_port_info, destination_port_info):
-    """(Phase 6) A vessel is feasible ONLY if:
+def feasible_vessels_both_ports(cargo_tonnage, origin_port_info, destination_port_info, origin_name=None, destination_name=None):
+    """A vessel is feasible ONLY if:
         cargo_compatible AND origin_port_compatible AND destination_port_compatible
     Uses the SAME check_vessel_port_compatibility() for both ends — no
     duplicated origin/destination logic.
@@ -581,12 +580,12 @@ def feasible_vessels_both_ports(cargo_tonnage, origin_port_info, destination_por
             })
             continue
 
-        origin_ok, origin_reason = check_vessel_port_compatibility(vessel_class, origin_port_info, label="origin port")
+        origin_ok, origin_reason = check_vessel_port_compatibility(vessel_class, origin_port_info, label="origin port", port_name=origin_name)
         if not origin_ok:
             rejected.append({**entry, "rejection_reason": origin_reason})
             continue
 
-        dest_ok, dest_reason = check_vessel_port_compatibility(vessel_class, destination_port_info, label="destination port")
+        dest_ok, dest_reason = check_vessel_port_compatibility(vessel_class, destination_port_info, label="destination port", port_name=destination_name)
         if not dest_ok:
             rejected.append({**entry, "rejection_reason": dest_reason})
             continue
@@ -613,7 +612,7 @@ def recommend_vessel(
       1. Find the smallest dataset-derived vessel class whose
          typical DWT >= cargo tonnage.
       2. Check its feasibility against BOTH the origin and destination
-         ports (Phase 6 — previously destination-only).
+         ports.
       3. If it does not fit, inspect smaller/alternative feasible
          vessel classes (feasible at BOTH ends) and explain the trade-off.
       4. Combine the vessel recommendation with rate direction
@@ -632,6 +631,8 @@ def recommend_vessel(
         cargo_tonnage,
         origin_port_info,
         port_info,
+        origin_name=origin_port_name,
+        destination_name=port_name,
     )
 
     if max_draft is not None:
@@ -657,6 +658,15 @@ def recommend_vessel(
     # re-deriving a separate answer here.
     selected_port_ok = any(c["vessel_class"] == selected_class for c in candidates)
 
+    # The selected class can fail at either end — usually the ORIGIN port
+    # (e.g. Beira's 8.0 m usable depth), or an LOA/beam limit at either
+    # end — so carry the real rejection reason through rather than
+    # assuming it was the destination port depth.
+    selected_rejection_reason = next(
+        (r.get("rejection_reason") for r in rejected if r.get("vessel_class") == selected_class),
+        None,
+    )
+
     # Find all physically feasible cargo-capable vessels (already filtered
     # to both-port-feasible by feasible_vessels_both_ports above).
     feasible = candidates
@@ -677,6 +687,7 @@ def recommend_vessel(
         selected_draft=selected_draft,
         port_depth=port_depth,
         selected_port_ok=selected_port_ok,
+        selected_rejection_reason=selected_rejection_reason,
         best_feasible_class=best_feasible["vessel_class"] if best_feasible is not None else None,
         over_capacity=bool(selected.get("_over_capacity")),
         predicted_rate=predicted_rate,

@@ -15,7 +15,7 @@
 // would burn that budget fast for no benefit.
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Loader2, GitCompareArrows, TrendingDown, TrendingUp } from "lucide-react";
+import { Loader2, GitCompareArrows, TrendingDown, TrendingUp, SlidersHorizontal } from "lucide-react";
 import api from "../api/client.js";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card.jsx";
 import { Badge } from "./ui/badge.jsx";
@@ -64,6 +64,22 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
   // program when one is set, otherwise the single cargo.
   const basisTons = Number(baseRequest.total_program_tons) || cargo;
 
+  // Whether the numbers above actually reflect a drag in the What-if panel,
+  // vs. just falling back to the original forecast-form inputs. Mirrors the
+  // same base-cargo/base-duration defaults WhatIfPanel itself starts from,
+  // so this only flips once the user has genuinely moved a slider — it's
+  // what tells them (and links them back to) where these numbers came from.
+  const baseCargoDefault = Number(baseRequest.cargo_weight_tons) || 50000;
+  const baseDurationDefault = Number(baseRequest.contract_duration_months) || 6;
+  const scenarioAdjusted =
+    scenario != null &&
+    (Number(scenario.cargo) !== baseCargoDefault || Number(scenario.duration ?? 0) !== baseDurationDefault);
+
+  function scrollToWhatIf(e) {
+    e.preventDefault();
+    document.getElementById("whatif-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   async function run() {
     setStatus("loading");
     setCoa({ error: null, data: null });
@@ -111,13 +127,16 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
   // `feasible` (from compare-origins) already reflects full both-port
   // status; the vessel_status check is kept too as a defensive guard for
   // rows where it might be missing. Same rule as the Decision Brief PDF.
-  const altBest = (alt.data?.results || [])
+  const altFeasible = (alt.data?.results || [])
     .filter((r) => r.origin_port !== baseRequest.origin_port
       && r.feasible === true
       && typeof r.vessel_status === "string" && r.vessel_status !== "NO_FEASIBLE_VESSEL"
       && r.predicted_freight_rate_usd_per_ton != null)
     .sort((a, b) => a.predicted_freight_rate_usd_per_ton - b.predicted_freight_rate_usd_per_ton
-      || (a.total_voyage_days ?? Infinity) - (b.total_voyage_days ?? Infinity))[0] || null;
+      || (a.total_voyage_days ?? Infinity) - (b.total_voyage_days ?? Infinity));
+  const altBest = altFeasible[0] || null;
+  // Next-cheapest vessel-feasible loading ports, shown by name only.
+  const altOthers = altFeasible.slice(1, 4).map((r) => r.origin_port);
   const altCost = altBest ? altBest.predicted_freight_rate_usd_per_ton * basisTons : null;
 
   // "Lowest cost" only among options that can actually be executed.
@@ -136,8 +155,18 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
             <div className="flex flex-col">
               <CardTitle className="text-lg">Decision simulator — what should procurement do?</CardTitle>
               <span className="text-xs text-slate-500">
-                {`For ${cargo.toLocaleString()} t${duration ? `, ${duration} mo` : ", spot"} on ${baseRequest.origin_port}–${baseRequest.destination_port} — compares staying on this lane against a multi-voyage COA and the best alternative loading port.`}
+                {`Compares staying on this lane against a multi-voyage COA and the best alternative loading port, on ${baseRequest.origin_port}–${baseRequest.destination_port}.`}
               </span>
+              <button
+                type="button"
+                onClick={scrollToWhatIf}
+                className="mt-1 flex w-fit items-center gap-1.5 text-[0.68rem] font-medium text-signal hover:underline"
+              >
+                <SlidersHorizontal className="h-3 w-3" />
+                {scenarioAdjusted
+                  ? `Priced at ${cargo.toLocaleString()} t${duration ? `, ${duration} mo` : ", spot"} — from the sliders in What-if above`
+                  : `Priced at ${cargo.toLocaleString()} t${duration ? `, ${duration} mo` : ", spot"} — your original forecast inputs (adjust What-if above to test a scenario)`}
+              </button>
             </div>
           </div>
           <DecisionBriefButton recordId={forecast.record_id} cargo={cargo} duration={duration} />
@@ -178,7 +207,11 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
                 cheapest={coaFeasible && minCost != null && coaCost === minCost}
               >
                 {coa.error ? (
-                  <span className="text-port">{coa.error}</span>
+                  <div className="flex flex-col gap-1 text-port">
+                    {String(coa.error).split(" | ").map((line, i) => (
+                      <span key={i}>{line}</span>
+                    ))}
+                  </div>
                 ) : coa.data ? (
                   <>
                     <span className="flex items-center gap-1">
@@ -204,7 +237,7 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
 
               <OptionCard
                 title="Switch loading port"
-                sub={altBest ? `${altBest.origin_port}${altBest.origin_country ? `, ${altBest.origin_country}` : ""}` : undefined}
+                sub={altBest ? altBest.origin_port : undefined}
                 cost={altCost}
                 costLabel={`Est. cost at ${basisTons.toLocaleString()} t`}
                 cheapest={minCost != null && altCost === minCost}
@@ -216,6 +249,7 @@ export default function DecisionSimulator({ baseRequest, forecast, scenario }) {
                     <span>Rate: ${altBest.predicted_freight_rate_usd_per_ton}/t · Risk: {altBest.risk_label}</span>
                     <span>{altBest.total_voyage_days != null ? `${altBest.total_voyage_days}d total voyage` : "—"}</span>
                     <span>Vessel-feasible at both ports</span>
+                    {altOthers.length > 0 && <span>Other feasible ports: {altOthers.join(", ")}</span>}
                   </>
                 ) : (
                   <span>No alternative origin has a vessel that fits at both ports.</span>

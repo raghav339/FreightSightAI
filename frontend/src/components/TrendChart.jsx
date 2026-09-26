@@ -20,9 +20,9 @@ function ChartTooltip({ active, payload, label }) {
     <div className="rounded-lg border border-hull-500 bg-hull-800/95 px-3 py-2 shadow-glow backdrop-blur-sm">
       <div className="font-mono text-[0.7rem] uppercase tracking-wider text-slate-500">{label}</div>
       <div className="mt-0.5 font-display text-sm font-semibold text-signal">
-        {Number(point.value).toFixed(2)}
+        {`$${Number(point.value).toFixed(2)}/t`}
         <span className="ml-1.5 font-body text-xs font-normal text-slate-400">
-          {point.payload?.isForecast ? "Forecast" : "USD/t"}
+          {point.payload?.isForecast ? "forecast" : "USD per ton"}
         </span>
       </div>
     </div>
@@ -72,7 +72,7 @@ export default function TrendChart({ points }) {
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-signal/10 text-signal">
             <LineChartIcon className="h-[18px] w-[18px]" />
           </span>
-          <CardTitle className="text-lg">{"Route freight-rate trend — last 12 months"}</CardTitle>
+          <CardTitle className="text-lg">{"Route freight-rate trend (USD/t) — last 12 months"}</CardTitle>
         </CardHeader>
         <CardContent className="pt-2">
           <ResponsiveContainer width="100%" height={280}>
@@ -96,7 +96,8 @@ export default function TrendChart({ points }) {
                 tick={{ fill: "#6b7690", fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}
                 tickLine={false}
                 axisLine={false}
-                width={44}
+                tickFormatter={(v) => `$${v}`}
+                width={52}
               />
               <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#22D3C4", strokeWidth: 1, strokeDasharray: "4 4" }} />
               <Line

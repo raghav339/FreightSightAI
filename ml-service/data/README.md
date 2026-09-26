@@ -1,4 +1,4 @@
-# FreightSight data directory (Phase 10 — data governance)
+# FreightSight data directory (data governance)
 
 This directory is split by provenance so no dataset can be mistaken for
 something it isn't:
@@ -12,13 +12,10 @@ something it isn't:
 
 - **`production/`** — empty by default. This is where verified real-world
   datasets go, matching the filenames/schemas documented in
-  `production/README.md`. `train.py` automatically prefers this directory
-  the moment all required files are present here, and prints which
-  directory it actually used (it never silently mixes the two). Run
+  `production/README.md`. `route_freight_model.py` automatically prefers
+  verified production observations the moment there are enough of them for
+  every trained lane, and records which mode it actually used (it never
+  silently mixes the two). Run
   `python scripts/generate_data_manifest.py production` after populating it.
 
-`train.py`'s data-directory choice (`production` or `synthetic`) is recorded
-in every trained model's `metadata.json` as `data_source_mode`, and returned
-on every `/predict` response as `training_data_mode`, so the UI/PDF/judge
-never has to guess whether a given forecast came from a model trained on
-real or synthetic data.
+`route_freight_model.py` decides, per lane, whether to use verified production observations or fall back to the synthetic MVP dataset — it needs enough production rows for *every* lane the model was trained on before treating production as usable at all (a handful of production rows can't be reliably mixed with a model that was otherwise trained on synthetic data). That choice is recorded in the model's own `data_mode` field (`verified_production` or `synthetic_mvp`) and returned on every `/predict` response as `training_data_mode`, so the UI/PDF/judge never has to guess whether a given forecast came from a model trained on real or synthetic data.

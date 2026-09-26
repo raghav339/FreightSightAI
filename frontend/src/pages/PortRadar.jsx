@@ -6,6 +6,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import api from "../api/client.js";
 import { Button } from "../components/ui/button.jsx";
 import PortRadarCard, { statusStyle } from "../components/PortRadarCard.jsx";
+import PortSubstitutionPanel from "../components/PortSubstitutionPanel.jsx";
 import { cn } from "../lib/utils.js";
 
 const REFRESH_MS = 2 * 60 * 1000;
@@ -131,6 +132,8 @@ export default function PortRadar() {
                 </aside>
               </div>
             )}
+
+            {selected && <PortSubstitutionPanel port={selected.port} />}
           </>
         )}
       </div>

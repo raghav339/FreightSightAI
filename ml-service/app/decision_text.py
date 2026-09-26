@@ -17,7 +17,7 @@ TEXT = {'rise': 'rise',
  'window_down': 'You can wait 2–4 weeks (rate trending down)',
  'window_flat': 'Rate is stable; charter on your normal schedule',
  'summary': 'For {commodity} into {destination}, the route freight rate is forecast to {direction} to '
-            'about ${forecast:.2f}/unit. {risk_text} {window}. {note}',
+            'about ${forecast:.2f}/t. {risk_text} {window}. {note}',
  'vessel': 'The recommended vessel is {vessel}. {note}',
  'idle_high': 'Estimated turnaround at discharge is ~{days} days, above the 4-day comfort band. Pre-book a laycan '
               "window with buffer, and line up a backhaul or repositioning cargo so the vessel isn't idle waiting at "
@@ -62,12 +62,16 @@ TEXT = {'rise': 'rise',
  'vessel_fit_ok': 'Its typical draft of {draft:.1f} m is within the destination port depth of {port_depth:.1f} m.',
  'vessel_fit_unknown': 'Port depth or draft data is not fully available for this route, so this feasibility check is '
                        'approximate.',
- 'vessel_fit_fail_alt': "{vessel}'s typical draft of {draft:.1f} m exceeds the destination port depth of "
-                        '{port_depth:.1f} m, so {alt} is recommended instead as the largest class that fits both '
-                        'ports.',
- 'vessel_fit_fail_none': "{vessel}'s typical draft of {draft:.1f} m exceeds the destination port depth of "
-                         '{port_depth:.1f} m, and no dataset vessel class fits both ports for this cargo; treat this '
-                         'recommendation as indicative only.',
+ 'vessel_fit_fail_alt': "{vessel} cannot be used on this voyage. {reason} {alt} is recommended instead as the "
+                        'smallest class that can carry this cargo and fits both ports.',
+ 'vessel_fit_fail_none': "{vessel} cannot be used on this voyage. {reason} No dataset vessel class fits both ports "
+                         'for this cargo; treat this recommendation as indicative only.',
+ 'vessel_fit_fail_generic_alt': "{vessel} does not fit the draft, length or beam limits at both the origin and destination "
+                                'ports, so {alt} is recommended instead as the smallest class that can carry this cargo and '
+                                'fits both ports.',
+ 'vessel_fit_fail_generic_none': "{vessel} does not fit the draft, length or beam limits at both the origin and destination "
+                                 'ports, and no dataset vessel class fits both ports for this cargo; treat this '
+                                 'recommendation as indicative only.',
  'timing_up': 'Freight rates are trending up, so consider chartering sooner rather than later.',
  'timing_down': 'Freight rates are trending down, so there may be room to wait before chartering.',
  'timing_flat': 'Freight rates look stable.',
@@ -215,7 +219,7 @@ def build_draft_exceeds_max(*, draft, max_draft):
     return TEXT["draft_exceeds_max"].format(draft=draft, max_draft=max_draft)
 
 
-def build_vessel_explanation(*, selected_class, cargo_tonnage, selected_draft, port_depth, selected_port_ok, best_feasible_class, over_capacity, predicted_rate, previous_rate):
+def build_vessel_explanation(*, selected_class, cargo_tonnage, selected_draft, port_depth, selected_port_ok, best_feasible_class, over_capacity, predicted_rate, previous_rate, selected_rejection_reason=None):
     parts = []
     if over_capacity:
         parts.append(TEXT["vessel_capacity_over"].format(cargo=cargo_tonnage, vessel=selected_class))
@@ -224,11 +228,14 @@ def build_vessel_explanation(*, selected_class, cargo_tonnage, selected_draft, p
     have_dims = selected_draft is not None and port_depth is not None
     if selected_port_ok:
         parts.append(TEXT["vessel_fit_ok"].format(draft=selected_draft, port_depth=port_depth) if have_dims else TEXT["vessel_fit_unknown"])
+    elif selected_rejection_reason:
+        # State the ACTUAL reason (which port, which limit) — never assume it
+        # is the destination depth.
+        key = "vessel_fit_fail_alt" if best_feasible_class else "vessel_fit_fail_none"
+        parts.append(TEXT[key].format(vessel=selected_class, reason=selected_rejection_reason, alt=best_feasible_class))
     elif have_dims:
-        if best_feasible_class:
-            parts.append(TEXT["vessel_fit_fail_alt"].format(vessel=selected_class, draft=selected_draft, port_depth=port_depth, alt=best_feasible_class))
-        else:
-            parts.append(TEXT["vessel_fit_fail_none"].format(vessel=selected_class, draft=selected_draft, port_depth=port_depth))
+        key = "vessel_fit_fail_generic_alt" if best_feasible_class else "vessel_fit_fail_generic_none"
+        parts.append(TEXT[key].format(vessel=selected_class, alt=best_feasible_class))
     else:
         parts.append(TEXT["vessel_fit_unknown"])
     timing = None

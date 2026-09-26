@@ -43,7 +43,11 @@ export default function IdleVesselFinder() {
       .then(({ data }) => setVesselTypes(data.vessel_types || []))
       .catch(() => {});
     loadAisIdleVessels();
-    const timer = window.setInterval(loadAisIdleVessels, 30000);
+    // Poll every 60 s, and skip polls while the tab is hidden — the AIS scan
+    // shares the ML service with the forecast endpoints.
+    const timer = window.setInterval(() => {
+      if (!document.hidden) loadAisIdleVessels();
+    }, 60000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -318,7 +322,7 @@ export default function IdleVesselFinder() {
                         {a.risk_label}
                       </Badge>
                       <span className="font-mono text-xs text-slate-400">
-                        ~{a.estimated_ballast_days}d ballast · ${a.predicted_freight_rate_usd_per_ton?.toFixed(2)}
+                        ~{a.estimated_ballast_days}d ballast · ${a.predicted_freight_rate_usd_per_ton?.toFixed(2)}/t
                       </span>
                     </div>
                   </div>

@@ -114,12 +114,12 @@ router.get("/forecast/:resultId/pdf", optionalAuth, async (req, res) => {
 
   // (a) Rate / market timing
   section(L.rateForecast);
-  doc.text(`${L.predictedRate}: $${money(row.predicted_freight_rate_usd_per_ton)}`);
+  doc.text(`${L.predictedRate}: $${money(row.predicted_freight_rate_usd_per_ton)}/t`);
   doc.text(`${L.marketRisk}: ${row.risk_label?.toUpperCase()} (${L.confidence} ${row.risk_confidence != null ? (row.risk_confidence * 100).toFixed(1) + "%" : "—"})`);
   doc.text(`${L.charterWindow}: ${row.recommended_charter_window || "—"}`);
 
-  // (Phase 4) Multi-horizon forecast curve — H+1/H+2/H+3, each from its
-  // own directly-trained model, not a relabeled single-step prediction.
+  // Multi-horizon forecast curve — H+1/H+2/H+3, each from its own
+  // directly-trained model, not a relabeled single-step prediction.
   if (forecastCurve.length) {
     doc.moveDown(0.3);
     doc.fontSize(9).fillColor("#333333").text(`${L.multiHorizonOutlook}:`);

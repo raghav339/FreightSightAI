@@ -6,14 +6,6 @@ Its main workflow is:
 
 **forecast freight → assess risk → validate vessel/port feasibility → compare origins → choose charter timing/strategy → optimize multi-voyage/COA plans.**
 
-## Recent fixes
-
-See `FreightSight_Project_Manual.md` §13 (Changelog) for full detail. Latest:
-
-- Widened `forecast_results.vessel_constraint_note` and `alerts.message` from `VARCHAR(500)` to `TEXT` — fixes intermittent "Forecast was generated but could not be saved" errors on MySQL caused by generated explanation text exceeding the old column limits.
-- Fixed AIS `PositionReport` ingestion: AISStream's `NavigationalStatus` string enum is now normalized to the numeric ITU-R code the `ais_positions` schema expects, instead of failing every insert.
-- Fixed an AIS collector connection leak that could exhaust AISStream's per-key concurrent-connection limit (surfaced as a `429` in `/ais/status`'s `last_error`).
-
 ## Project architecture
 
 ```text
@@ -44,6 +36,9 @@ Node/Express backend
           ├── vessel/port feasibility
           ├── idle-vessel alternatives
           ├── AIS intelligence
+          ├── port disruption radar
+          ├── port substitution engine
+          ├── disruption intelligence (simulate + live)
           └── COA optimization
 ```
 
@@ -55,11 +50,14 @@ Node/Express backend
 - Risk classification and forecast drivers (rule-based score; includes a small Brent-based fuel-cost-shock factor when fresh data is available)
 - Vessel selection with **both-origin-and-destination** port feasibility checks
 - Origin comparison
-- AIS-enhanced route intelligence and idle-vessel detection
+- AIS-enhanced route intelligence, idle-vessel detection and a live fleet map
+- Port Disruption Radar — live AIS congestion vs. each port's own normal (`docs/PORT_RADAR.md`)
+- Port Substitution Engine — ranked alternate discharge ports when one becomes unavailable
+- Disruption Intelligence — Simulate (hand-picked event/severity) and Live (current marine conditions) wait-vs-divert decisions, with one-click PDF decision briefs
 - COA / multi-voyage charter optimization
 - What-if analysis
-- Forecast history and alerts
-- PDF forecast reports
+- Forecast history, alerts and a model-calibration/performance view
+- PDF forecast reports and disruption decision briefs
 - English-only decision-support interface
 
 ## Important transparency
@@ -177,7 +175,9 @@ Never expose `AISSTREAM_API_KEY` through a `VITE_*` frontend variable.
    - contracting strategy
 8. Use **Compare Origins**, **Idle Vessel Finder**, and **COA Optimizer** for planning workflows.
 9. Sign in if you want forecast history/private PDF reports.
-10. If AIS is configured, review live AIS status and route/idle-vessel signals.
+10. If AIS is configured, review **Live Fleet Map**, **Port Radar** and route/idle-vessel signals.
+11. Open **Disruption** to simulate a port event (or switch to Live mode for current marine conditions) and see the propagation chain, wait-vs-divert call, and ranked alternative ports — with an optional one-click PDF decision brief.
+12. Open **Calibration** to review model-performance/calibration figures.
 
 ## API surface
 
@@ -191,6 +191,14 @@ The backend exposes the main browser API under `/api`:
 | `POST /api/idle-alternatives` | Reposition an idle vessel |
 | `POST /api/whatif` | Lightweight decision sensitivity |
 | `POST /api/coa-optimize` | COA/multi-voyage optimization |
+| `POST /api/port-substitution` | Ranked alternate discharge ports if one becomes unavailable |
+| `POST /api/disruption/simulate` | Disruption Intelligence, Simulate mode (hand-picked event type/severity) |
+| `POST /api/disruption/live` | Disruption Intelligence, Live mode (current marine conditions at a port) |
+| `GET /api/disruption/event-types` | Event types available to Simulate mode |
+| `POST /api/disruption/decision-brief` | One-click PDF: Simulate or Live disruption result, wait-vs-divert call, best alternative port |
+| `GET /api/recent-voyages` | Recently forecast voyages (for dashboard/landing widgets) |
+| `GET /api/dashboard-summary` | Aggregate figures for the landing/dashboard view |
+| `GET /api/calibration/summary` | Model-performance/calibration summary |
 | `GET /api/history` | Authenticated forecast history |
 | `GET /api/alerts` | Forecast alerts |
 | `GET /api/routes` | Route/commodity metadata |
@@ -213,35 +221,19 @@ The ML service mirrors the computational endpoints without the `/api` prefix.
 
 ## Testing and audit status
 
-The current project was statically inspected and the Python/ML test suite was executed file-by-file.
+The ML test suite currently has **185 test functions across 18 files** under `ml-service/tests/`, covering:
 
-### Passed
+- baseline guardrails, COA optimizer, origin comparison, idle alternatives, idle detector
+- port feasibility (`test_port_utils.py`), route-freight model, route model, synthetic market proxy
+- Brent fuel-cost signal (`test_brent.py`)
+- Port Disruption Radar (`test_port_radar.py`)
+- Port Substitution Engine (`test_port_substitution.py`)
+- Disruption Intelligence — pure logic (`test_disruption_engine.py`) and end-to-end wiring against real port/lane data (`test_disruption_wiring.py`)
+- Live/marine-weather disruption mode (`test_marine_weather.py`, `test_live_disruption.py`)
 
-**64 ML tests passed**, covering:
+The backend has a Jest suite under `backend/test/` (see `backend/test/README.md` for a per-file breakdown) covering history, alerts, PDF export, port radar proxying, forecast/disruption decision briefs, and what-if.
 
-- baseline guardrails
-- COA optimizer
-- origin comparison
-- fallback hierarchy
-- idle alternatives
-- idle detector
-- port feasibility
-- prediction integration
-- risk walk-forward checks
-- route-freight model
-- route model
-- synthetic market proxy
-
-Python compilation also passed for the ML service, and Node syntax checks passed for the backend source files.
-
-### Environment-limited checks
-
-The supplied archive did not have a usable frontend `node_modules` installation, and the backend `node_modules` tree was incomplete. `npm install/npm ci` could not finish within the available execution environment, so:
-
-- the React production build could not be executed;
-- the Jest backend suite could not be executed because `cross-env`/Jest binaries were absent.
-
-This is an **environment/dependency limitation of the audit run**, not evidence that those suites pass. Run the commands below on a normal internet-connected development machine:
+Run the full suites on a normal, internet-connected development machine with:
 
 ```bash
 cd backend
@@ -257,20 +249,7 @@ pip install -r requirements.txt
 python -m pytest -q
 ```
 
-### Direct ML HTTP smoke test
-
-The FastAPI app was also exercised directly with its test client. The following returned successful responses:
-
-- `/health`
-- `/meta`
-- `/ports`
-- `/route-freight/status`
-- `/dashboard-summary`
-- `/ais/status`
-- `/forecast`
-- `/recommend`
-- `/compare-origins`
-- `/idle-alternatives`
+For a point-in-time record of an actual test/audit run (pass counts, smoke-test results, known failures), see `AUDIT_REPORT.md` and `docs/SIH26006_TRACEABILITY.md`.
 
 ## Known limitations
 
@@ -287,9 +266,12 @@ The FastAPI app was also exercised directly with its test client. The following 
 
 - `FreightSight_Project_Manual.md` — detailed setup, workflows, troubleshooting, architecture and demo guide.
 - `docs/SIH26006_TRACEABILITY.md` — requirement-to-implementation traceability and verification notes.
+- `docs/PORT_RADAR.md` — how the Port Disruption Radar status is computed, and its known limitations.
+- `AUDIT_REPORT.md` — point-in-time record of a full inspection and test run.
 - `ml-service/data/README.md` — data organization and provenance.
 - `ml-service/data/production/README.md` — production-data caveats.
 - `ml-service/data/synthetic/README.md` — synthetic-data disclosure.
+- `backend/test/README.md`, `ml-service/tests/README.md` — per-file test-suite breakdowns.
 
 
 ### Route-freight model files and memory
@@ -306,3 +288,28 @@ The risk score has an optional sixth factor, `fuel_shock`, based on the 30-day m
 
 Live AIS `PositionReport` and `ShipStaticData` records are persisted in the same MySQL database used by the backend. This means AIS history survives ML-service/Render restarts and redeploys. The collector keeps the latest 30 days by default (`AIS_RETENTION_DAYS=30`).
 
+
+## Performance notes (compare-origins / idle-alternatives)
+
+- `ml-service` memoizes lane forecasts (10 min) and whole compare/idle answers (2 min), and pre-computes every lane's forecast for this and next month in the background at startup. Set `PREWARM_FORECASTS=0` to disable the pre-compute on very small instances.
+- The backend caches identical `/compare-origins` and `/idle-alternatives` requests for 2 minutes (`DISABLE_RESPONSE_CACHE=1` turns it off; it is always off under `NODE_ENV=test`).
+- AIS idle-vessel scans are cached for 20 s and per-port congestion for 60 s.
+
+## Port Substitution Engine
+
+`POST /port-substitution` (ml-service) / `POST /api/port-substitution` (backend) answers "if this discharge port becomes unavailable, where should we go?" for any tracked port.
+
+- Request: `{ failed_port, cargo_weight_tons?, commodity?, origin_port?, shipment_date?, vessel_type?, max_distance_nm? }`. Only `failed_port` is required; adding a loading port + commodity brings in freight-rate impact.
+- Logic lives in `ml-service/app/port_substitution.py` (pure, unit-tested — see `tests/test_port_substitution.py`): a hard vessel-fit gate (draft/LOA/beam/cargo capacity at both ports), then a weighted score across freight impact, expected delay, congestion, distance, cargo handling and vessel headroom.
+- Response includes a ranked `options` list (PRIMARY / BACKUP / VIABLE / NOT_VIABLE), a `map` (nodes/edges) for the UI, a plain-language `recommendation`, and `assumptions` describing what is and isn't modeled (no port dues, no onward inland transport cost, no multi-ship diversion congestion; delay figures are labelled planning assumptions, not measured).
+- Frontend: `PortSubstitutionPanel` renders automatically under the selected port on the Port Radar page, with a lightweight SVG `SubstitutionMap`.
+
+## Disruption Intelligence
+
+`POST /disruption/simulate` (Simulate mode) and `POST /disruption/live` (Live mode) on the ml-service — mirrored as `POST /api/disruption/simulate` / `POST /api/disruption/live` on the backend — both answer "what happens to this lane/port if a disruption hits, and should we wait or divert?" `GET /disruption/event-types` lists the event types available to Simulate mode, and `POST /api/disruption/decision-brief` turns either mode's result into a one-click PDF.
+
+**Simulate mode** — request: `{ event_type, port, severity (0-100), duration_days?, origin_port?, destination_port?, commodity?, shipment_date?, cargo_weight_tons?, stockpile_buffer_days?, include_alternatives? }`. Only `event_type`, `port`, `severity` are required. `ModelBundle.simulate_disruption` (`ml-service/app/utils.py`) resolves the port's role (origin/destination) from the project's own port lists rather than just from having infrastructure data on file. If a full lane (origin + destination + commodity) is known, the disruption's freight-pressure percentage is applied as an uplift on top of the existing route forecast — it does not re-run the forecast model. If the disrupted port is a discharge port, it automatically calls the Port Substitution Engine treating that port as unavailable, and returns a `decision` block comparing "wait it out" vs. the best ranked alternative; for a loading port, no alternative call is made (that's `/compare-origins`'s job) and the response says so explicitly. Source is reported as `"simulated"`. Tests: `tests/test_disruption_engine.py` (pure logic) and `tests/test_disruption_wiring.py` (run against the real port master and lane models).
+
+**Live mode** — same response shape as Simulate, minus `event_type`/`severity` in the request; severity instead comes from current marine conditions. `ml-service/app/marine_weather.py` fetches current wind, precipitation, visibility (Open-Meteo `forecast` API) and wave height, swell, period (Open-Meteo `marine` API) for a port's coordinates using only the standard library (`urllib`), converting them into a 0-1 severity score against labelled reference points (storm-force wind ~89 km/h, WMO "very rough" sea ~6 m, "violent" rain ~15 mm/h, good visibility 10 km). **Never fabricates a reading** — if both endpoints fail, or a port has no coordinates on file, the response is `severity: None` / `status: "unavailable"` and `ModelBundle.live_disruption` raises a clear error rather than defaulting to "calm." Always uses the `extreme_weather` event profile and labels `source: "live"`; the rest of the pipeline (lane pricing, wait-vs-divert decision, Port Substitution alternatives) shares the exact same code path as Simulate mode (`ModelBundle._build_disruption_response`). Tests (`tests/test_marine_weather.py`, `tests/test_live_disruption.py`) mock the HTTP layer — before relying on this for a demo, make one real call against a real port and confirm Open-Meteo's response field names still match `_WIND_PARAMS`/`_MARINE_PARAMS` in `marine_weather.py` (external APIs occasionally rename fields).
+
+**Frontend** — the `/disruption` page (navbar: "Disruption") has a Simulate/Live toggle. Simulate shows event type, affected port, a continuous 0-100 severity slider, optional duration/stockpile buffer, and an optional lane section that unlocks freight-impact numbers. Live hides the event-type/severity controls and adds a "Live marine conditions" card. Both render a vertical propagation diagram (`components/PropagationChain.jsx`), a freight-impact card when a full lane is given, a "wait it out vs. divert" comparison card for discharge-port disruptions, and — for discharge-port disruptions — the ranked alternatives from the Port Substitution Engine (map + top 3), linking through to the full analysis on the Port Radar page. The page renders exactly what the API returns; it computes nothing itself beyond basic number formatting.

@@ -85,5 +85,33 @@ module.exports = {
     "fullReport": "The full forecast report for this record is available from the forecast page (record #{id}).",
     "footerNote": "Indicative decision-support output, not a chartering commitment or broker quote.",
     "page": "Page"
+  },
+
+  // Disruption Decision Brief (routes/disruptionBrief.js -> utils/disruptionBriefPdf.js)
+  "disruptionBrief": {
+    "title": "Disruption Decision Brief",
+    "prepared": "Prepared",
+    "simulated": "Simulated scenario",
+    "live": "Live conditions",
+    "call": "The call",
+    "propagation": "Propagation",
+    "colStep": "Step",
+    "colDetail": "Detail",
+    "freightImpact": "Freight impact",
+    "baseline": "Baseline",
+    "withDisruption": "With disruption",
+    "waitVsDivert": "Wait vs. divert",
+    "colOption": "Option",
+    "colExpectedDelay": "Expected delay",
+    "colFreight": "Freight vs. baseline",
+    "colDistance": "From disrupted port",
+    "wait": "Wait it out",
+    "divert": "Recommended alternative",
+    "why": "Why this call",
+    "alternativePorts": "Other vessel-feasible alternatives",
+    "notes": "Notes",
+    "limits": "What this scenario does and does not account for",
+    "footerNote": "Indicative decision-support output from a disruption scenario, not a chartering commitment or broker quote.",
+    "page": "Page"
   }
 };

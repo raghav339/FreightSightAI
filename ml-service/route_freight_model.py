@@ -416,7 +416,23 @@ class _LaneStore:
             entry = self.index.get(key)
             if entry is None:
                 raise KeyError(key)
-            bundle = joblib.load(self.lanes_dir / entry["file"])
+
+        # The disk read + deserialize happens outside the lock so different
+        # lanes load in parallel — compare-origins fans out across every
+        # origin in a thread pool specifically so those lookups run
+        # concurrently, and serialized disk I/O would be the real cost
+        # behind a slow compare-origins call (especially cold, before
+        # these lanes are cached). Only the cache dict itself needs the lock.
+        bundle = joblib.load(self.lanes_dir / entry["file"])
+
+        with self._lock:
+            # Another thread may have loaded (and cached) this exact lane
+            # while we were reading it from disk — keep the already-cached
+            # copy so the LRU doesn't double-count it.
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                return cached
             self._cache[key] = bundle
             while len(self._cache) > self.max_cached:
                 self._cache.popitem(last=False)
@@ -449,6 +465,39 @@ class _HorizonView(Mapping):
 
     def __contains__(self, key):
         return key in self._keyset
+
+
+def _ensemble_tree_values(model, frame: pd.DataFrame):
+    """Per-tree predictions for one row, computed once and cheaply.
+
+    PERF: predict() used to call `model.predict()` (which itself runs every
+    tree through sklearn's full input-validation + joblib dispatch) and then
+    loop `est.predict()` over all ~150 trees AGAIN to get the ensemble
+    spread — ~300 validated sklearn calls per horizon, ~900 per lane, which
+    was the dominant cost of every forecast (and compare-origins /
+    idle-alternatives make dozens of them). We transform the row once and
+    query each tree's compiled `tree_` directly: no validation, no joblib,
+    and the RandomForest point estimate is just the mean of these same
+    values (that is exactly what RandomForestRegressor.predict computes), so
+    the answer is unchanged.
+
+    Returns a 1-D float array, or None if anything about the fitted
+    pipeline isn't the expected shape (callers then use the slow path).
+    """
+    try:
+        pre = model.named_steps["pre"]
+        rf = model.named_steps["rf"]
+        Xt = pre.transform(frame)
+        if hasattr(Xt, "toarray"):
+            Xt = Xt.toarray()
+        Xt = np.ascontiguousarray(Xt, dtype=np.float32)
+        estimators = rf.estimators_
+        vals = np.empty(len(estimators), dtype=float)
+        for i, est in enumerate(estimators):
+            vals[i] = est.tree_.predict(Xt)[0, 0]
+        return vals
+    except Exception:
+        return None
 
 
 class RouteFreightModel:
@@ -505,6 +554,44 @@ class RouteFreightModel:
             self.data.drop_duplicates("_key").set_index("_key") if not self.data.empty else self.data
         )
 
+        # PERF caches (see predict()). Both are derived purely from the
+        # immutable-after-load dataset / model index, so they are safe to
+        # share across request threads (worst case two threads compute the
+        # same entry once each and one write wins).
+        self._monthly_cache: dict[str, pd.DataFrame] = {}
+        self._monthly_cache_data_id = id(self.data)
+        self._pair_index: dict[tuple[str, str], list[str]] | None = None
+        self._pair_index_size = None
+
+    def _lane_keys_for_pair(self, norm_origin: str, norm_destination: str) -> list[str]:
+        """Lane keys (in model-index order) for a normalised origin/destination.
+
+        PERF: predict() used to scan and split() EVERY lane key (hundreds) on
+        every call. Built once from the index instead."""
+        keys = self.models.get(1, {})
+        if self._pair_index is None or self._pair_index_size != (id(keys), len(keys)):
+            index: dict[tuple[str, str], list[str]] = {}
+            for key in keys:
+                o, d, _rid = key.split("|", 2)
+                index.setdefault((o.strip().lower(), d.strip().lower()), []).append(key)
+            self._pair_index = index
+            self._pair_index_size = (id(keys), len(keys))
+        return self._pair_index.get((norm_origin, norm_destination), [])
+
+    def _monthly_for_key(self, key: str) -> pd.DataFrame:
+        """Monthly-aggregated history for one lane, computed once.
+
+        PERF: this was a full-DataFrame boolean scan + groupby on every
+        predict() (~25 ms each)."""
+        if self._monthly_cache_data_id != id(self.data):
+            self._monthly_cache = {}
+            self._monthly_cache_data_id = id(self.data)
+        cached = self._monthly_cache.get(key)
+        if cached is None:
+            cached = _monthly_series(self.data[self.data["_key"] == key].copy())
+            self._monthly_cache[key] = cached
+        return cached
+
     def has_route(self, origin: str, destination: str, route_id: str | None = None, commodity: str | None = None) -> bool:
         if self.data.empty:
             return False
@@ -530,15 +617,14 @@ class RouteFreightModel:
     def predict(self, origin: str, destination: str, when: str | pd.Timestamp, route_id: str | None = None, commodity: str | None = None) -> dict[str, Any] | None:
         if self.data.empty or not self.models:
             return None
-        candidates = []
         norm_origin = str(origin).strip().lower()
         norm_destination = str(destination).strip().lower()
-        for key in self.models.get(1, {}):
-            o, d, rid = key.split("|", 2)
-            if o.strip().lower() != norm_origin or d.strip().lower() != norm_destination or (route_id and rid != route_id):
+        candidates = []
+        wanted = commodity.strip().lower().replace(" ", "_").replace("&", "and") if commodity else None
+        for key in self._lane_keys_for_pair(norm_origin, norm_destination):
+            if route_id and key.split("|", 2)[2] != route_id:
                 continue
-            if commodity:
-                wanted = commodity.strip().lower().replace(" ", "_").replace("&", "and")
+            if wanted:
                 route_commodity = (
                     str(self._key_first_row.loc[key, "commodity"]).strip().lower().replace(" ", "_").replace("&", "and")
                     if key in self._key_first_row.index else ""
@@ -549,8 +635,7 @@ class RouteFreightModel:
         if not candidates:
             return None
         key = candidates[0]
-        route_rows = self.data[self.data["_key"] == key].copy()
-        route_rows = _monthly_series(route_rows)
+        route_rows = self._monthly_for_key(key)
         when = pd.Timestamp(when)
         prior = route_rows[route_rows.month < when.to_period("M").to_timestamp()]
         if len(prior) < 3:
@@ -575,14 +660,14 @@ class RouteFreightModel:
             if model is None:
                 continue
             row = pd.DataFrame([base])
-            pred = float(model.predict(row[NUMERIC + CATEGORICAL])[0])
-            tree_values = None
-            try:
-                Xt = model.named_steps["pre"].transform(row[NUMERIC + CATEGORICAL])
-                rf = model.named_steps["rf"]
-                tree_values = np.array([est.predict(Xt)[0] for est in rf.estimators_], dtype=float)
-            except Exception:
+            frame = row[NUMERIC + CATEGORICAL]
+            tree_values = _ensemble_tree_values(model, frame)
+            if tree_values is not None and len(tree_values):
+                # RandomForestRegressor.predict == mean of the per-tree values.
+                pred = float(tree_values.mean())
+            else:
                 tree_values = None
+                pred = float(model.predict(frame)[0])
             last_rate = float(prior.iloc[-1].freight_usd_per_t)
             
             horizon_metrics = self.meta.get("metrics", {}).get(key, {}).get(str(h), {})

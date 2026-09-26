@@ -79,3 +79,40 @@ export function saveVesselTypes(vesselTypes) {
 export function getVesselTypes() {
   return readJSON(VESSELS_KEY, null);
 }
+
+// Summarises what's actually usable offline right now, so the UI can tell
+// the user which lanes will resolve instantly instead of letting them fill
+// out a whole form only to hit "no cached forecast for this route".
+export function getCachedLanes() {
+  const list = readJSON(FORECASTS_KEY, []);
+  const byLane = new Map();
+  for (const e of list) {
+    const laneKey = [e.origin_port, e.destination_port, e.commodity].join("|");
+    const existing = byLane.get(laneKey);
+    if (!existing || e.savedAt > existing.savedAt) {
+      byLane.set(laneKey, {
+        origin_port: e.origin_port,
+        destination_port: e.destination_port,
+        commodity: e.commodity,
+        savedAt: e.savedAt,
+      });
+    }
+  }
+  return [...byLane.values()].sort((a, b) => b.savedAt - a.savedAt);
+}
+
+// One-stop summary of everything that's usable with no connection, so the
+// global offline banner and offline-aware pages can tell the user up front
+// what will work instead of letting them try things that can't.
+export function getOfflineSummary() {
+  const forecasts = readJSON(FORECASTS_KEY, []);
+  const meta = getMeta();
+  const vessels = getVesselTypes();
+  return {
+    lanes: getCachedLanes(),
+    forecastCount: forecasts.length,
+    hasRouteList: !!meta?.data,
+    hasVesselList: Array.isArray(vessels?.data) && vessels.data.length > 0,
+    savedAt: forecasts[0]?.savedAt ?? meta?.savedAt ?? null,
+  };
+}

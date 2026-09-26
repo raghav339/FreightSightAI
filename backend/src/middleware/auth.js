@@ -2,13 +2,11 @@
 // requireAuth: verifies the JWT sent as `Authorization: Bearer <token>` and
 // attaches the decoded payload to req.user.
 //
-// BUGFIX: this file previously exported requireAuth/optionalAuth/JWT_SECRET
-// without ever defining them, which threw a ReferenceError the moment
-// anything required this module — crashing the whole backend at startup
-// (every route file needs this: auth.js, forecast.js, history.js, pdf.js).
-// Restored using the shared resolveSecret() policy already defined in
+// JWT_SECRET is resolved via the shared resolveSecret() policy in
 // utils/secrets.js (random dev/test secret with a loud warning; hard
 // failure in production if unset — see that file for the full policy).
+// Every route file depends on this module (auth.js, forecast.js,
+// history.js, pdf.js), so it must always export a working JWT_SECRET.
 const jwt = require("jsonwebtoken");
 const { resolveSecret } = require("../utils/secrets");
 

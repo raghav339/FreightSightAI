@@ -4,17 +4,14 @@
 // of the app: if AIS isn't configured or a window is empty, say so plainly
 // instead of showing a misleadingly empty-but-silent map.
 import { useEffect, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Popup, useMap } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
 import { Radar, RefreshCw, AlertTriangle, Anchor } from "lucide-react";
 import api from "../api/client.js";
 import { Card, CardHeader, CardTitle, CardContent } from "../components/ui/card.jsx";
 import { Field, Select } from "../components/ui/field.jsx";
 import { Button } from "../components/ui/button.jsx";
+import FleetMap, { STATUS } from "../components/FleetMap.jsx";
 
-const STATUS_COLOR = { underway: "#2FBF71", slow: "#E8A33D", stopped: "#D9483C" };
-const STATUS_LABEL = { underway: "Underway", slow: "Slow / maneuvering", stopped: "Stopped / anchored" };
-const PORT_COLOR = "#FFB020";
+const STATUS_COLOR = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.color]));
 
 function StatBox({ label, value, colorClass }) {
   return (
@@ -23,22 +20,6 @@ function StatBox({ label, value, colorClass }) {
       <div className={`mt-1 font-display text-2xl font-semibold ${colorClass || "text-paper-50"}`}>{value}</div>
     </div>
   );
-}
-
-// A common cause of a blank Leaflet map in React is the container having
-// size 0 at first measurement (e.g. mid fade-in) — re-measure a beat after
-// mount, same fix RouteMap.jsx uses.
-function InvalidateOnMount() {
-  const map = useMap();
-  useEffect(() => {
-    const t1 = setTimeout(() => map.invalidateSize(), 100);
-    const t2 = setTimeout(() => map.invalidateSize(), 500);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [map]);
-  return null;
 }
 
 function emptyReason({ status, lookbackHours, portFilter }) {
@@ -154,7 +135,7 @@ export default function LiveFleetMap() {
             {"Vessels near tracked ports, live from AIS"}
           </h1>
           <p className="max-w-2xl text-sm text-slate-400">
-            {"Real-time vessel positions from AISStream around the 21 ports FreightSight covers. This is a raw observation feed, not a forecast — dots are colored by current movement, nothing more."}
+            {"Real-time vessel positions from AISStream around the 21 ports FreightSight covers. This is a raw observation feed, not a forecast — each vessel points along its heading and is colored by current movement, nothing more."}
           </p>
         </header>
 
@@ -224,67 +205,7 @@ export default function LiveFleetMap() {
               <StatBox label="Stopped" value={vessels.filter((v) => v.status === "stopped").length} colorClass="text-vermilion" />
             </div>
 
-            <div className="h-[520px] w-full overflow-hidden rounded-xl border border-hull-600/60">
-              <MapContainer
-                center={[10, 90]}
-                zoom={3}
-                scrollWheelZoom={true}
-                className="h-full w-full"
-                style={{ background: "#070B12" }}
-              >
-                <TileLayer
-                  className="route-map-dark-tiles"
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  subdomains="abc"
-                  maxZoom={19}
-                  errorTileUrl="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
-                />
-
-                {ports.map((p) => (
-                  <CircleMarker
-                    key={p.name}
-                    center={[p.lat, p.lon]}
-                    radius={5}
-                    pathOptions={{ color: PORT_COLOR, weight: 1.5, fillColor: PORT_COLOR, fillOpacity: 0.45 }}
-                  >
-                    <Tooltip direction="top" offset={[0, -6]} opacity={1} className="route-map-tooltip">
-                      {p.name} · port
-                    </Tooltip>
-                  </CircleMarker>
-                ))}
-
-                {vessels.map((v) => {
-                  const color = STATUS_COLOR[v.status] || "#8892A6";
-                  return (
-                    <CircleMarker
-                      key={v.mmsi}
-                      center={[v.lat, v.lon]}
-                      radius={5}
-                      pathOptions={{ color, weight: 1.5, fillColor: color, fillOpacity: 0.9 }}
-                    >
-                      <Popup>
-                        <div className="min-w-[180px] font-mono text-xs leading-relaxed">
-                          <div className="font-semibold">{v.ship_name || "Unnamed vessel"}</div>
-                          <div>MMSI {v.mmsi}</div>
-                          <div>{STATUS_LABEL[v.status] || v.status} · {v.sog_kn != null ? `${v.sog_kn.toFixed(1)} kn` : "speed unknown"}</div>
-                          <div>
-                            Near {v.port_near || "open water"}
-                            {v.port_distance_nm != null ? ` (${v.port_distance_nm.toFixed(1)} nm)` : ""}
-                          </div>
-                          {v.destination && <div>Bound for {v.destination}</div>}
-                          <div className="mt-1 text-[10px] text-gray-500">
-                            {v.received_at ? new Date(v.received_at).toLocaleString() : ""}
-                          </div>
-                        </div>
-                      </Popup>
-                    </CircleMarker>
-                  );
-                })}
-
-                <InvalidateOnMount />
-              </MapContainer>
-            </div>
+            <FleetMap ports={ports} vessels={vessels} portFilter={portFilter} generatedAt={data?.generated_at} loading={loading} />
 
             {!error && vessels.length === 0 && (
               <div className="flex items-center gap-2 rounded-xl border border-hull-600/60 bg-hull-900/30 p-6 text-sm text-slate-400">
@@ -292,13 +213,6 @@ export default function LiveFleetMap() {
                 {emptyReason({ status, lookbackHours, portFilter })}
               </div>
             )}
-
-            <div className="flex flex-wrap gap-4 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: PORT_COLOR }} /> Tracked port (orange dots are ports, not vessels)</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR.underway }} /> Underway (&gt;3 kn)</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR.slow }} /> Slow (0.5–3 kn)</span>
-              <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS_COLOR.stopped }} /> Stopped (≤0.5 kn)</span>
-            </div>
 
             {ports.length > 0 && <VesselsByPort ports={ports} vessels={vessels} />}
           </CardContent>

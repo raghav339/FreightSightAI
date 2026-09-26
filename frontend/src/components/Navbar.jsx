@@ -56,6 +56,8 @@ const links = [
   { to: "/idle-vessel", label: "Idle Vessel" },
   { to: "/live-fleet", label: "Live Fleet" },
   { to: "/port-radar", label: "Port Radar" },
+  { to: "/disruption", label: "Disruption" },
+  { to: "/calibration", label: "Calibration" },
   { to: "/history", label: "History" },
   { to: "/about", label: "About" },
 ];

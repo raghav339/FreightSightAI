@@ -35,6 +35,56 @@ class ForecastRequest(BaseModel):
         return self
 
 
+class PortSubstitutionRequest(BaseModel):
+    """Port Substitution Engine — "if this discharge port becomes unavailable,
+    where should the cargo go instead?". Only `failed_port` is required; the
+    optional cargo/lane fields sharpen the answer (vessel gate, freight impact,
+    sailing-time change)."""
+    failed_port: str
+    cargo_weight_tons: float = Field(default=50000.0, gt=0)
+    commodity: Optional[str] = None
+    origin_port: Optional[str] = None
+    shipment_date: Optional[date_type] = None
+    vessel_type: Optional[str] = None
+    max_distance_nm: float = Field(default=800.0, gt=0)
+    use_live_ais: bool = True
+
+
+class DisruptionSimulateRequest(BaseModel):
+    """Disruption Engine (Step 1: app/disruption_engine.py) — simulate an
+    event at a port and see the propagation to delay/freight and, where the
+    port is a discharge port, ranked alternatives via the Port Substitution
+    Engine. Only `event_type`, `port` and `severity` are required; the lane
+    fields (origin_port/destination_port/commodity) add freight impact."""
+    event_type: str
+    port: str
+    severity: float = Field(ge=0, le=100)
+    duration_days: Optional[float] = Field(default=None, gt=0)
+    origin_port: Optional[str] = None
+    destination_port: Optional[str] = None
+    commodity: Optional[str] = None
+    shipment_date: Optional[date_type] = None
+    cargo_weight_tons: float = Field(default=50000.0, gt=0)
+    stockpile_buffer_days: Optional[float] = Field(default=None, gt=0)
+    include_alternatives: bool = True
+
+
+class DisruptionLiveRequest(BaseModel):
+    """Disruption Engine — Live mode (Step 4). Severity comes from a live
+    marine-weather reading (app/marine_weather.py) at the port's
+    coordinates, not from the caller. Fields mirror DisruptionSimulateRequest
+    minus event_type/severity."""
+    port: str
+    duration_days: Optional[float] = Field(default=None, gt=0)
+    origin_port: Optional[str] = None
+    destination_port: Optional[str] = None
+    commodity: Optional[str] = None
+    shipment_date: Optional[date_type] = None
+    cargo_weight_tons: float = Field(default=50000.0, gt=0)
+    stockpile_buffer_days: Optional[float] = Field(default=None, gt=0)
+    include_alternatives: bool = True
+
+
 class CompareOriginsRequest(BaseModel):
     """(2) Origin comparison — same cargo/destination/date, ranked across
     every known loading port (Australia/US/Mozambique/Russia/Indonesia)."""

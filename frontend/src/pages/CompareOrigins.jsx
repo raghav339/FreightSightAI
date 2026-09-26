@@ -202,7 +202,7 @@ export default function CompareOrigins() {
                       <th className="px-3 py-1">{"Turnaround"}</th>
                       <th className="px-3 py-1">{"Total voyage"}</th>
                       <th className="px-3 py-1">{"Congestion"}</th>
-                      <th className="px-3 py-1">{"Forecast rate"}</th>
+                      <th className="px-3 py-1">{"Forecast rate ($/t)"}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -262,7 +262,7 @@ export default function CompareOrigins() {
                           )}
                         </td>
                         <td className="px-3 py-2.5 font-mono text-xs">
-                          ${r.predicted_freight_rate_usd_per_ton?.toFixed(2)}
+                          ${r.predicted_freight_rate_usd_per_ton?.toFixed(2)}/t
                         </td>
                       </tr>
                     ))}
