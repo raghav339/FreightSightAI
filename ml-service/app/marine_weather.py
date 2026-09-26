@@ -11,14 +11,22 @@ matters.
 
 Data source
 -----------
-WeatherAPI.com's Marine API (https://www.weatherapi.com). One call returns
-wind, precipitation, visibility AND wave/swell height together for a
-lat/lon, which is why it was chosen: the previous source (Open-Meteo) needed
-two separate endpoint calls for the same data, and this app runs on Render,
-where the outbound IP is shared with other tenants — a free-tier rate limit
-on a shared IP is something this app has no control over and can't "fix" by
-calling less. A single-endpoint, API-keyed source sidesteps that: the quota
-is per-key, not per-shared-IP.
+WeatherAPI.com (https://www.weatherapi.com). Primary call is the Marine API
+(``marine.json``), which returns wind, precipitation, visibility AND
+wave/swell height together for a lat/lon in one request — chosen because the
+previous source (Open-Meteo) needed two separate endpoint calls for the same
+data, and this app runs on Render, where the outbound IP is shared with
+other tenants; a free-tier rate limit on a shared IP is something this app
+has no control over and can't "fix" by calling less. A single-endpoint,
+API-keyed source sidesteps that: the quota is per-key, not per-shared-IP.
+
+Some coordinates — river-mouth and delta ports especially (Paradip on the
+Mahanadi delta is a real example) — fall just outside WeatherAPI's marine
+wave-model grid: marine.json responds successfully but has no usable wave
+data for that exact point. When that happens, this module falls back to
+``forecast.json`` (WeatherAPI's ordinary weather endpoint, which has data
+for any coordinate) so wind/precipitation/visibility are still available
+even though wave height/swell will be ``None`` — see ``fetch_conditions``.
 
 Requires an API key in the ``WEATHERAPI_KEY`` environment variable (free
 tier: https://www.weatherapi.com/pricing.aspx, no card required). Without
@@ -60,7 +68,11 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-WEATHERAPI_URL = "https://api.weatherapi.com/v1/marine.json"
+WEATHERAPI_BASE = "https://api.weatherapi.com/v1"
+MARINE_URL = f"{WEATHERAPI_BASE}/marine.json"
+# Fallback endpoint (see fetch_conditions): works for ANY coordinate, land or
+# sea, unlike marine.json which only has data on WeatherAPI's ocean wave grid.
+FORECAST_URL = f"{WEATHERAPI_BASE}/forecast.json"
 WEATHERAPI_KEY_ENV = "WEATHERAPI_KEY"
 REQUEST_TIMEOUT_S = 6
 # A couple of short, polite retries on a 429 — WeatherAPI's free tier is
@@ -69,8 +81,12 @@ REQUEST_TIMEOUT_S = 6
 # immediately.
 RATE_LIMIT_RETRIES = 2
 RATE_LIMIT_BACKOFF_S = 1.5
+# Request 2 days from marine.json (not just 1) as a small buffer: if the
+# current day's hour array comes back empty for this exact grid cell, the
+# next day's often isn't. Still well inside the free tier's 3-day cap.
+MARINE_FORECAST_DAYS = 2
 
-# Field names WeatherAPI's `forecast.forecastday[0].hour[N]` objects are
+# Field names WeatherAPI's `forecast.forecastday[N].hour[N]` objects are
 # expected to use. Documented here (rather than buried in the function
 # below) so a future field-name change on their end is a one-line fix.
 _HOUR_FIELDS = {
@@ -82,6 +98,9 @@ _HOUR_FIELDS = {
     "swell_wave_height_m": "swell_ht_mt",
     "wave_period_s": "swell_period_secs",
 }
+# Marker fields used to decide whether an hour entry actually carries marine
+# (wave/swell) data, vs. just the ordinary weather fields every hour has.
+_MARINE_MARKER_FIELDS = ("sig_ht_mt", "swell_ht_mt")
 
 # ---- labelled reference points (see module docstring) ----------------------
 # Wind: ~62 km/h is the low end of Beaufort 8 ("gale"); ~89 km/h is the low
@@ -129,13 +148,43 @@ def _http_get_json(url: str, params: dict[str, Any], timeout: float = REQUEST_TI
             raise
 
 
+def _pick_hour(forecast_days: list[dict[str, Any]], require_marine: bool = False) -> dict[str, Any] | None:
+    """Pick the hour entry closest to now, searching each forecast day in
+    order until one has hourly data at all (and, if ``require_marine``,
+    until one actually carries wave/swell fields — see ``fetch_conditions``
+    for why marine.json can return days with an empty ``hour`` array or with
+    hours that have no marine markers for a given coordinate).
+    """
+    now_hour = time.gmtime().tm_hour
+    for day in forecast_days:
+        hours = day.get("hour") or []
+        if not hours:
+            continue
+        candidate = next((h for h in hours if str(h.get("time", "")).endswith(f"{now_hour:02d}:00")), hours[0])
+        if require_marine and all(candidate.get(f) is None for f in _MARINE_MARKER_FIELDS):
+            continue
+        return candidate
+    return None
+
+
 def fetch_conditions(lat: float, lon: float) -> dict[str, Any]:
     """Fetch current wind/precipitation/visibility + wave/swell for one point.
 
-    Returns a dict always shaped the same way; on any failure (missing key,
-    network error, timeout, unexpected response shape) the numeric fields
-    are ``None`` and ``status`` is ``"unavailable"`` with an ``error``
-    message — never a fabricated reading.
+    Tries ``marine.json`` first (one call covers everything). Some
+    coordinates — river-mouth and delta ports especially — fall just outside
+    WeatherAPI's marine wave-model grid, in which case marine.json still
+    responds successfully but returns no usable wave data (an empty ``hour``
+    array, or hours with no marine fields) for that exact point. When that
+    happens, this falls back to ``forecast.json`` (WeatherAPI's ordinary
+    weather endpoint, which has data for any coordinate, land or sea) so
+    wind/precipitation/visibility are still available even though wave
+    height/swell will be ``None``.
+
+    Returns a dict always shaped the same way. ``status`` is ``"ok"`` when
+    both wind and marine data came through, ``"partial"`` when only one did
+    (most commonly: wind/precip/visibility present, wave/swell missing),
+    and ``"unavailable"`` with no numeric fields at all if nothing could be
+    fetched — never a fabricated reading.
     """
     out: dict[str, Any] = {
         "wind_speed_kmh": None, "wind_direction_deg": None, "precipitation_mm_h": None,
@@ -149,31 +198,60 @@ def fetch_conditions(lat: float, lon: float) -> dict[str, Any]:
         out["error"] = f"{WEATHERAPI_KEY_ENV} not configured"
         return out
 
+    errors: list[str] = []
+    wind_ok = False
+    marine_ok = False
+
     try:
-        data = _http_get_json(WEATHERAPI_URL, {"key": key, "q": f"{lat},{lon}", "days": 1})
+        data = _http_get_json(MARINE_URL, {"key": key, "q": f"{lat},{lon}", "days": MARINE_FORECAST_DAYS})
         forecast_days = data.get("forecast", {}).get("forecastday") or []
         if not forecast_days:
             raise RuntimeError("no forecast data in response")
-        hours = forecast_days[0].get("hour") or []
-        if not hours:
-            raise RuntimeError("no hourly data in response")
-        # WeatherAPI returns 24 local hourly buckets for the day rather than
-        # a single "current" reading; pick the one matching the current UTC
-        # hour (falling back to the first bucket if the match fails).
-        now_hour = time.gmtime().tm_hour
-        hour_data = next((h for h in hours if str(h.get("time", "")).endswith(f"{now_hour:02d}:00")), hours[0])
-        for out_key, src_key in _HOUR_FIELDS.items():
-            out[out_key] = hour_data.get(src_key)
+        hour = _pick_hour(forecast_days, require_marine=True)
+        if hour is not None:
+            for out_key, src_key in _HOUR_FIELDS.items():
+                out[out_key] = hour.get(src_key)
+            wind_ok = out["wind_speed_kmh"] is not None or out["precipitation_mm_h"] is not None
+            marine_ok = out["wave_height_m"] is not None or out["swell_wave_height_m"] is not None
+        else:
+            # marine.json responded, but no hour in any returned day carries
+            # wave/swell data — this coordinate is likely just outside
+            # WeatherAPI's marine grid. Salvage ordinary weather fields from
+            # whichever hour we can find, if any.
+            hour = _pick_hour(forecast_days, require_marine=False)
+            if hour is not None:
+                out["wind_speed_kmh"] = hour.get("wind_kph")
+                out["wind_direction_deg"] = hour.get("wind_degree")
+                out["precipitation_mm_h"] = hour.get("precip_mm")
+                out["visibility_km"] = hour.get("vis_km")
+                wind_ok = out["wind_speed_kmh"] is not None or out["precipitation_mm_h"] is not None
+            errors.append("no marine (wave/swell) data for this coordinate — likely outside WeatherAPI's marine grid")
     except Exception as exc:  # network error, timeout, bad response shape, invalid key, etc.
-        out["status"] = "unavailable"
-        out["error"] = f"weatherapi fetch failed: {exc}"
-        return out
+        errors.append(f"marine.json fetch failed: {exc}")
 
-    have_any = any(out[k] is not None for k in (
-        "wind_speed_kmh", "precipitation_mm_h", "wave_height_m", "swell_wave_height_m"))
-    if not have_any:
+    if not wind_ok:
+        try:
+            data = _http_get_json(FORECAST_URL, {"key": key, "q": f"{lat},{lon}", "days": 1})
+            forecast_days = data.get("forecast", {}).get("forecastday") or []
+            hour = _pick_hour(forecast_days, require_marine=False)
+            if hour is not None:
+                out["wind_speed_kmh"] = hour.get("wind_kph")
+                out["wind_direction_deg"] = hour.get("wind_degree")
+                out["precipitation_mm_h"] = hour.get("precip_mm")
+                out["visibility_km"] = hour.get("vis_km")
+                wind_ok = out["wind_speed_kmh"] is not None or out["precipitation_mm_h"] is not None
+            else:
+                errors.append("forecast.json: no hourly data in response")
+        except Exception as exc:
+            errors.append(f"forecast.json fetch failed: {exc}")
+
+    if not wind_ok and not marine_ok:
         out["status"] = "unavailable"
-        out["error"] = "weatherapi returned no usable readings"
+    elif wind_ok and marine_ok:
+        out["status"] = "ok"
+    else:
+        out["status"] = "partial"
+    out["error"] = "; ".join(errors) if errors and out["status"] != "ok" else None
     return out
 
 

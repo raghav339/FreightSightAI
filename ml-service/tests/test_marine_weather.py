@@ -68,7 +68,8 @@ class TestFetchConditions(unittest.TestCase):
         self.assertIsNone(out["wind_speed_kmh"])
         self.assertIn("WEATHERAPI_KEY", out["error"])
 
-    def test_network_failure_is_unavailable_not_a_crash(self):
+    def test_total_network_failure_is_unavailable_not_a_crash(self):
+        # Both marine.json AND the forecast.json fallback fail — nothing to salvage.
         with patch.object(mw, "_http_get_json", side_effect=TimeoutError("timed out")):
             out = mw.fetch_conditions(-19.8, 34.8)
         self.assertEqual(out["status"], "unavailable")
@@ -85,7 +86,7 @@ class TestFetchConditions(unittest.TestCase):
                 raise mw.urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
             import io
             import json as _json
-            body = _json.dumps(weatherapi_response(wind_kph=20.0)).encode("utf-8")
+            body = _json.dumps(weatherapi_response(wind_kph=20.0, sig_ht_mt=1.5)).encode("utf-8")
             return io.BytesIO(body)
 
         # Patch urlopen (not _http_get_json) so the real retry loop runs.
@@ -96,7 +97,68 @@ class TestFetchConditions(unittest.TestCase):
         self.assertEqual(out["wind_speed_kmh"], 20.0)
         self.assertGreaterEqual(calls["n"], 2)
 
-    def test_empty_forecast_is_unavailable(self):
+    def test_empty_forecast_falls_back_to_plain_forecast_endpoint(self):
+        # marine.json's forecastday array is empty entirely (e.g. quota/plan
+        # issue specific to that endpoint) — forecast.json still succeeds.
+        def fake_get(url, params, timeout=6):
+            if url == mw.MARINE_URL:
+                return {"forecast": {"forecastday": []}}
+            self.assertEqual(url, mw.FORECAST_URL)
+            return weatherapi_response(wind_kph=15.0, precip_mm=0.0, vis_km=10.0)
+
+        with patch.object(mw, "_http_get_json", side_effect=fake_get):
+            out = mw.fetch_conditions(-19.8, 34.8)
+        self.assertEqual(out["status"], "partial")
+        self.assertEqual(out["wind_speed_kmh"], 15.0)
+        self.assertIsNone(out["wave_height_m"])
+        self.assertIsNotNone(out["error"])
+
+    def test_no_marine_grid_coverage_falls_back_for_wind_and_still_reports_partial(self):
+        # This is the real-world Paradip-style case: marine.json responds with
+        # a forecast day, but its `hour` array is empty (no wave-model grid
+        # coverage at this coordinate) — NOT a total marine.json failure.
+        def fake_get(url, params, timeout=6):
+            if url == mw.MARINE_URL:
+                return {"forecast": {"forecastday": [{"date": "2026-01-01", "hour": []}]}}
+            self.assertEqual(url, mw.FORECAST_URL)
+            return weatherapi_response(wind_kph=32.0, precip_mm=1.0, vis_km=6.0)
+
+        with patch.object(mw, "_http_get_json", side_effect=fake_get):
+            out = mw.fetch_conditions(20.26, 86.67)  # approx. Paradip
+        self.assertEqual(out["status"], "partial")
+        self.assertEqual(out["wind_speed_kmh"], 32.0)
+        self.assertIsNone(out["wave_height_m"])
+        self.assertIn("marine", out["error"])
+
+    def test_marine_hours_present_but_no_marine_markers_still_falls_back(self):
+        # hour array is non-empty but has no sig_ht_mt/swell_ht_mt at all —
+        # same "outside the marine grid" case, just shaped slightly differently.
+        def fake_get(url, params, timeout=6):
+            if url == mw.MARINE_URL:
+                return weatherapi_response(wind_kph=10.0)  # no marine markers
+            self.assertEqual(url, mw.FORECAST_URL)
+            return weatherapi_response(wind_kph=10.0, precip_mm=0.5, vis_km=9.0)
+
+        with patch.object(mw, "_http_get_json", side_effect=fake_get):
+            out = mw.fetch_conditions(-19.8, 34.8)
+        self.assertEqual(out["status"], "partial")
+        self.assertEqual(out["wind_speed_kmh"], 10.0)
+        self.assertIsNone(out["wave_height_m"])
+
+    def test_marine_fails_but_forecast_fallback_succeeds_is_partial_not_unavailable(self):
+        def fake_get(url, params, timeout=6):
+            if url == mw.MARINE_URL:
+                raise ConnectionError("marine.json down")
+            self.assertEqual(url, mw.FORECAST_URL)
+            return weatherapi_response(wind_kph=25.0, precip_mm=3.0, vis_km=5.0)
+
+        with patch.object(mw, "_http_get_json", side_effect=fake_get):
+            out = mw.fetch_conditions(-19.8, 34.8)
+        self.assertEqual(out["status"], "partial")
+        self.assertEqual(out["wind_speed_kmh"], 25.0)
+        self.assertIsNone(out["wave_height_m"])
+
+    def test_both_endpoints_totally_empty_is_unavailable(self):
         with patch.object(mw, "_http_get_json", return_value={"forecast": {"forecastday": []}}):
             out = mw.fetch_conditions(-19.8, 34.8)
         self.assertEqual(out["status"], "unavailable")
