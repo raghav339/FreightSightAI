@@ -7,6 +7,7 @@ import AlertsPanel from "../components/AlertsPanel.jsx";
 import WhatIfPanel from "../components/WhatIfPanel.jsx";
 import DecisionSimulator from "../components/DecisionSimulator.jsx";
 import PortRadarNotice from "../components/PortRadarNotice.jsx";
+import ErrorBoundary from "../components/ErrorBoundary.jsx";
 
 export default function Predict() {
   const [result, setResult] = useState(null);
@@ -50,16 +51,18 @@ export default function Predict() {
               transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
               className="mt-10"
             >
-              <ResultCards result={result} />
-              <div className="mt-7">
-                <PortRadarNotice origin={lastRequest?.origin_port} destination={lastRequest?.destination_port} />
-              </div>
-              <div className="mt-7 flex flex-col gap-6">
-                <TrendChart points={result.chart_values} />
-                <WhatIfPanel baseRequest={lastRequest} onScenarioChange={handleScenarioChange} />
-                <DecisionSimulator baseRequest={lastRequest} forecast={result} scenario={scenario} />
-                <AlertsPanel />
-              </div>
+              <ErrorBoundary>
+                <ResultCards result={result} />
+                <div className="mt-7">
+                  <PortRadarNotice origin={lastRequest?.origin_port} destination={lastRequest?.destination_port} />
+                </div>
+                <div className="mt-7 flex flex-col gap-6">
+                  <TrendChart points={result.chart_values} />
+                  <WhatIfPanel baseRequest={lastRequest} onScenarioChange={handleScenarioChange} />
+                  <DecisionSimulator baseRequest={lastRequest} forecast={result} scenario={scenario} />
+                  <AlertsPanel />
+                </div>
+              </ErrorBoundary>
             </motion.div>
           )}
         </AnimatePresence>

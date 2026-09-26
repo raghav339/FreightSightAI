@@ -46,7 +46,13 @@ export default function PortRadarNotice({ origin, destination }) {
   }, [origin, destination]);
 
   if (!entries || entries.length === 0) return null;
-  const alerts = entries.filter((e) => ALERT.has(e.radar.status));
+  // Defensive: e.radar can come back missing/null if the port-radar
+  // response shape is ever unexpected, and an unguarded e.radar.status
+  // would throw during render and (with no error boundary above this)
+  // take the whole page down. Filter those entries out instead.
+  const usableEntries = entries.filter((e) => e.radar && typeof e.radar.status === "string");
+  if (usableEntries.length === 0) return null;
+  const alerts = usableEntries.filter((e) => ALERT.has(e.radar.status));
 
   return (
     <section className={cn("border p-4", alerts.length ? "border-vermilion/45 bg-vermilion/5" : "border-rule/60 bg-parchment")}>
@@ -56,7 +62,7 @@ export default function PortRadarNotice({ origin, destination }) {
           {alerts.length ? "Route operational warning" : "Live port conditions"}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.15em]">
-          {entries.map((e) => (
+          {usableEntries.map((e) => (
             <span key={e.port} className="text-inksoft">
               {e.port} <span className={cn("font-semibold", statusStyle(e.radar.status).text)}>{statusStyle(e.radar.status).label}</span>
             </span>
@@ -76,7 +82,7 @@ export default function PortRadarNotice({ origin, destination }) {
         {alerts.length > 0 && (
           <Button type="button" size="sm" onClick={scrollToWhatIf}>Run what-if</Button>
         )}
-        <Button as={Link} to={`/port-radar?port=${encodeURIComponent((alerts[0] || entries[0]).port)}`} size="sm" variant="outline">
+        <Button as={Link} to={`/port-radar?port=${encodeURIComponent((alerts[0] || usableEntries[0]).port)}`} size="sm" variant="outline">
           Open port radar
         </Button>
       </div>
