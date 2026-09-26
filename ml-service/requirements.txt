@@ -14,3 +14,5 @@ python-multipart==0.0.9
 websocket-client==1.8.0
 # MySQL persistence for live AIS history
 PyMySQL==1.1.1
+# Required by PyMySQL for MySQL 8's default caching_sha2_password auth
+cryptography==43.0.1

@@ -231,6 +231,8 @@ The ML test suite currently has **185 test functions across 18 files** under `ml
 - Disruption Intelligence — pure logic (`test_disruption_engine.py`) and end-to-end wiring against real port/lane data (`test_disruption_wiring.py`)
 - Live/marine-weather disruption mode (`test_marine_weather.py`, `test_live_disruption.py`)
 
+All 185 currently pass (see `AUDIT_REPORT.md`'s 2026-09-26 addendum for the run that verified this).
+
 The backend has a Jest suite under `backend/test/` (see `backend/test/README.md` for a per-file breakdown) covering history, alerts, PDF export, port radar proxying, forecast/disruption decision briefs, and what-if.
 
 Run the full suites on a normal, internet-connected development machine with:

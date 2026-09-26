@@ -76,16 +76,19 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-rule/70 bg-paper/95 backdrop-blur-[3px]">
-      <div className="mx-auto flex min-h-[4.45rem] max-w-[1240px] items-center gap-5 px-5 lg:px-8">
+      <div className="mx-auto flex min-h-[4.45rem] max-w-[1240px] items-center gap-3 px-5 lg:px-8">
         <NavLink to="/" onClick={() => setOpen(false)} className="flex shrink-0 items-center gap-2.5 text-ink">
           <CompassMark />
-          <span className="flex flex-col leading-none">
+          <span className="hidden flex-col leading-none min-[420px]:flex">
             <span className="font-display text-[19px] font-semibold tracking-tight">FreightSight</span>
             <span className="mt-1 font-mono text-[8px] uppercase tracking-[0.26em] text-inksoft">Chart &amp; Forecast Office</span>
           </span>
         </NavLink>
 
-        <nav aria-label="Main" className="ml-auto hidden items-center lg:flex">
+        <nav
+          aria-label="Main"
+          className="ml-auto hidden min-w-0 flex-1 items-center gap-x-0.5 overflow-x-auto whitespace-nowrap xl:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {links.map((item) => (
             <NavLink
               key={item.to}
@@ -93,7 +96,7 @@ export default function Navbar() {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  "relative whitespace-nowrap px-3 py-2 font-mono text-[11px] uppercase tracking-[0.17em] transition-colors",
+                  "relative shrink-0 whitespace-nowrap px-2 py-2 font-mono text-[10.5px] uppercase tracking-[0.13em] transition-colors 2xl:px-2.5 2xl:text-[11px] 2xl:tracking-[0.17em]",
                   isActive ? "text-ink" : "text-inksoft hover:text-ink",
                 )
               }
@@ -101,21 +104,21 @@ export default function Navbar() {
               {({ isActive }) => (
                 <>
                   {item.label}
-                  <span className={cn("absolute inset-x-2 -bottom-[19px] h-px origin-left bg-vermilion transition-transform duration-200", isActive ? "scale-x-100" : "scale-x-0")} />
+                  <span className={cn("absolute inset-x-1.5 -bottom-[19px] h-px origin-left bg-vermilion transition-transform duration-200", isActive ? "scale-x-100" : "scale-x-0")} />
                 </>
               )}
             </NavLink>
           ))}
         </nav>
 
-        <div className="ml-auto flex items-center gap-2 lg:ml-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2 xl:ml-2">
           <span className={cn("hidden items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.18em] sm:inline-flex", status === "online" ? "border-kelp/50 text-kelp" : status === "offline" ? "border-vermilion/50 text-vermilion" : "border-rule/60 text-rule")} title={status === "offline" ? "FreightSight backend is unreachable right now." : undefined}>
             {status === "offline" ? <WifiOff className="h-3 w-3" /> : <Radio className={cn("h-3 w-3", status === "online" && "animate-pulse")} />}
             {status === "online" ? "Console online" : status === "offline" ? "Console offline" : "Checking"}
           </span>
 
           {isAuthenticated ? (
-            <div className="hidden items-center gap-2 lg:flex">
+            <div className="hidden items-center gap-2 xl:flex">
               <span className={cn("flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.16em]", isVerified ? "border-kelp/50 text-kelp" : "border-brass/50 text-brass")} title={user?.email || undefined}>
                 {isVerified ? <ShieldCheck className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}
                 {user?.name?.split(" ")[0] || "Account"}
@@ -125,20 +128,20 @@ export default function Navbar() {
               </button>
             </div>
           ) : (
-            <div className="hidden items-center gap-2 lg:flex">
+            <div className="hidden items-center gap-2 xl:flex">
               <NavLink to="/login" className="px-2 py-2 font-mono text-[10px] uppercase tracking-[0.17em] text-inksoft hover:text-ink">Log in</NavLink>
               <NavLink to="/signup" className="border border-ink bg-ink px-3 py-2 font-mono text-[10px] uppercase tracking-[0.17em] text-paper hover:border-vermilion hover:bg-vermilion">Sign up</NavLink>
             </div>
           )}
 
-          <button className="p-2 text-ink lg:hidden" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label="Toggle navigation">
+          <button className="p-2 text-ink xl:hidden" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label="Toggle navigation">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
       {open && (
-        <nav aria-label="Mobile" className="border-t border-rule/60 bg-parchment lg:hidden">
+        <nav aria-label="Mobile" className="border-t border-rule/60 bg-parchment xl:hidden">
           {links.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} onClick={() => setOpen(false)} className={({ isActive }) => cn("flex items-center justify-between border-b border-rule/40 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.18em]", isActive ? "text-vermilion" : "text-inksoft") }>
               {item.label}

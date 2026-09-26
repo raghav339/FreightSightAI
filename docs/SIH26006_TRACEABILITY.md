@@ -4,11 +4,13 @@
 
 - ML service Python compilation: **passed**
 - Backend Node syntax checks: **passed**
-- Direct FastAPI endpoint smoke test: **passed** (see `AUDIT_REPORT.md` for the exact endpoint list from the last full run)
-- ML automated tests: the suite has grown to **185 test functions across 18 files** under `ml-service/tests/` (see the breakdown below); `AUDIT_REPORT.md` records the last executed pass/fail counts, which predate the newer disruption/port-substitution/live-mode files and should be re-run before relying on them
-- Frontend production build / backend Jest suite: run these on a normal development machine after `npm install` — see the commands at the end of this document
+- Frontend bundling / local-import resolution (esbuild): **passed** — every relative import in `frontend/src` resolves; no broken paths
+- Backend local `require()` path resolution: **passed** — every relative require in `backend/src` resolves
+- ML automated tests: **185/185 passed**, executed directly (`python -m unittest discover -s tests`) against the real production port/vessel/route-freight data, not just counted statically. (This environment has no network access to install `pydantic`/`fastapi` from `requirements.txt`; a minimal local stand-in for `pydantic`'s `BaseModel`/`Field` was used purely to let request objects construct for the test run — it does not implement pydantic's validation, so re-run the suite with the real `pydantic` installed before treating this as a full replacement for CI.)
+- One bug found and fixed during this pass: `ModelBundle.predict` left `vessel_rejection_reason` as `null` whenever no vessel was requested and none of the fleet fit both ports — even though a specific reason was already computed and shown elsewhere in the same response. `WhatIfPanel.jsx` and the PDF export both fall back to a generic "no vessel fits" message when this field is null, so the specific reason was being silently dropped in that path. Fixed in `ml-service/app/utils.py`; the full ML test suite (185/185) still passes after the fix.
+- Frontend production build / backend Jest suite: still not executed — no `node_modules` and no network access to install them in this environment. Run these on a normal development machine — see the commands at the end of this document.
 
-Environment-dependent checks (frontend build, backend Jest, a live Open-Meteo call for Disruption Live mode) require a normal internet-connected development machine and are not re-verified by this document itself.
+Environment-dependent checks (an actual `npm install` + Vite build, an actual `npm install` + Jest run, and a live Open-Meteo call for Disruption Live mode) require a normal internet-connected development machine and are not re-verified by this document itself.
 
 ## Requirement map
 
@@ -43,7 +45,7 @@ Environment-dependent checks (frontend build, backend Jest, a live Open-Meteo ca
 
 ## Test inventory
 
-The ML test suite currently has **185 test functions across 18 files** under `ml-service/tests/` (static count; see `AUDIT_REPORT.md` for the last executed pass/fail results):
+The ML test suite has **185 test functions across 18 files** under `ml-service/tests/`, all passing as of this pass (see "Verification status" above for how they were run in this environment):
 
 | Test file | Test functions |
 |---|---:|

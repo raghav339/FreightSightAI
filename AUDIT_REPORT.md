@@ -1,6 +1,6 @@
 # FreightSight Audit Report — 2026-09-07
 
-> **Note:** this report is a point-in-time record of the audit run below. Several features shipped afterwards — Port Disruption Radar, the Port Substitution Engine, Disruption Intelligence (Simulate and Live modes), the Live Fleet Map, model calibration, and forecast/disruption PDF decision briefs — are not covered by the findings or test counts in this document. See `docs/SIH26006_TRACEABILITY.md` for the current, up-to-date requirement map and test inventory, and `FreightSight_Project_Manual.md` for the current feature set.
+> **Note:** this report is a point-in-time record of the audit run below. Several features shipped afterwards — Port Disruption Radar, the Port Substitution Engine, Disruption Intelligence (Simulate and Live modes), the Live Fleet Map, model calibration, and forecast/disruption PDF decision briefs — are not covered by the findings or test counts in this document. See the **2026-09-26 addendum** at the end of this file, and `docs/SIH26006_TRACEABILITY.md`, for current status.
 
 ## Scope
 
@@ -122,3 +122,24 @@ Then perform a browser smoke test of:
 7. PDF export
 8. English-only interface and decision text
 9. AIS status with and without an API key
+
+## Addendum — 2026-09-26
+
+Full-project bug sweep covering everything added since the original audit above.
+
+**Static/structural checks — all passed:**
+- Python compilation across every file in `ml-service`
+- Node syntax check across every file in `backend/src`
+- esbuild bundle of the full frontend entry point — every relative import resolves; no broken paths
+- Resolution of every relative `require()` in `backend/src`
+
+**Executed test run:** the full ML test suite was actually run (`python -m unittest discover -s tests`) against the real, checked-in production port/vessel/route-freight data — **185/185 tests passed**. This required a minimal local stand-in for `pydantic` (no network access to install the real package in this environment); it supports plain attribute construction only, not pydantic's validation, so this is not a substitute for running the suite with the real dependencies installed, but it did let the actual business logic run end-to-end rather than just being read statically.
+
+**Bug found and fixed:** `ModelBundle.predict` (`ml-service/app/utils.py`) left `vessel_rejection_reason` as `null` in the response whenever no `vessel_type` was requested and no vessel class fit both ports — even though a specific reason (e.g. a named port's draft/LOA/beam limit) was already computed and shown elsewhere in the same response (`vessel_constraint_note`, `summary`). `WhatIfPanel.jsx` and the backend's PDF export (`routes/pdf.js`) both specifically check `vessel_rejection_reason` and fall back to a generic "no vessel class fits both ports for this cargo" message when it's null — so this bug meant that fallback fired far more often than it needed to, hiding a reason the system had already worked out. Fixed by reusing the per-vessel-class rejection detail already computed for the recommended vessel class. All 185 ML tests still pass after the fix.
+
+**Manually exercised end-to-end (not just read statically), against real data:** `predict` (forecast), `compare_origins`, `simulate_disruption`, and `port_substitution` — all produced correct, sane output.
+
+**Field-name consistency spot checks (ML service response → Node consumers):** Port Substitution option fields (`rank`, `port`, `delay.total_days`, `freight.delta_usd_per_ton`) used by `disruptionBriefPdf.js`, and Disruption Live's `live_conditions.{conditions,coverage}` shape used by `DisruptionSimulator.jsx` — both match the actual ML service response exactly.
+
+**Not covered by this addendum** (same environment limitations as the original audit): an actual `npm install` + Vite production build, an actual `npm install` + backend Jest run, and a live call against the real Open-Meteo API for Disruption Live mode. Run these on a normal internet-connected development machine before a release.
+

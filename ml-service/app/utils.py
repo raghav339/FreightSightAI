@@ -496,6 +496,15 @@ class ModelBundle:
                 item["rejection_reason"] = build_rejection_reason(kind=kind, vessel=entry.get("vessel_class"), port=port_name, value=value, limit=limit)
             rejected_reasons.append(item)
 
+        if vessel_status == "NO_FEASIBLE_VESSEL" and vessel_rejection_reason is None:
+            # No vessel was requested (so the branch above never ran), but the
+            # fleet-wide rejection detail computed above already has a specific
+            # reason for the recommended vessel class — surface that here too,
+            # instead of leaving this field null and forcing callers (WhatIfPanel,
+            # PDF export) back onto their generic "no vessel fits" fallback text.
+            match = next((r for r in rejected_reasons if r.get("vessel_class") == vessel), None)
+            vessel_rejection_reason = (match or (rejected_reasons[0] if rejected_reasons else {})).get("rejection_reason")
+
         turnaround = port_utils.port_turnaround_days(req.destination_port, req.cargo_weight_tons, delay_days=req.delay_days or 0)
         congestion = port_utils.congestion_warning(req.origin_port, req.destination_port)
 
