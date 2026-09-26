@@ -19,7 +19,7 @@ The route-freight models are large, so run files one at a time if memory is tigh
 | `test_port_substitution.py` | Port Substitution Engine (vessel-fit gate + weighted ranking) |
 | `test_disruption_engine.py` | Disruption Intelligence pure logic (propagation, event profiles) |
 | `test_disruption_wiring.py` | Disruption Intelligence Simulate mode wired against real port/lane data |
-| `test_marine_weather.py` | Open-Meteo wind/wave/precipitation parsing and severity scoring for Disruption Live mode |
+| `test_marine_weather.py` | WeatherAPI.com wind/wave/precipitation parsing and severity scoring for Disruption Live mode |
 | `test_live_disruption.py` | Disruption Intelligence Live mode end-to-end (marine-weather HTTP layer mocked) |
 | `test_coa_optimizer.py` | COA / multi-voyage optimizer |
 | `test_route_freight_model.py` | Route-freight model training and lookup |

@@ -31,6 +31,12 @@ services:
         value: "https://freightsightai-backend-8i52.onrender.com"
       - key: AISSTREAM_API_KEY
         sync: false
+      # REQUIRED for Live marine conditions (Disruption Engine "Live" mode).
+      # Free key: https://www.weatherapi.com/pricing.aspx
+      # Replaces the previous Open-Meteo source, which shared Render's
+      # outbound IP with other tenants and hit frequent 429 rate limits.
+      - key: WEATHERAPI_KEY
+        sync: false
       # AIS history uses the same persistent MySQL database as the backend.
       - key: AIS_DB_CLIENT
         value: "mysql"

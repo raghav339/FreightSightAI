@@ -1,7 +1,7 @@
 """Tests for ModelBundle.live_disruption (app/utils.py) — Step 4's Live mode.
 
 Every test mocks app.marine_weather.get_live_assessment so nothing here
-depends on network access (this sandbox has none) or on Open-Meteo being up.
+depends on network access (this sandbox has none) or on WeatherAPI being up.
 Run against the project's real port master and lane models, in the style of
 test_disruption_wiring.py.
 """

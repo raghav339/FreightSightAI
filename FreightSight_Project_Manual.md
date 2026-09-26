@@ -87,7 +87,7 @@ Answers "if this discharge port becomes unavailable, where should we go?" for an
 Answers "what happens to this lane/port if a disruption hits, and should we wait or divert?" in two modes:
 
 - **Simulate** — a hand-picked event type and severity (0-100 slider). If the disrupted port is a discharge port, it automatically calls the Port Substitution Engine and returns a wait-vs-divert `decision`.
-- **Live** — severity is derived from current marine conditions (wind, waves, precipitation, visibility) fetched from Open-Meteo, never fabricated; the rest of the pipeline (lane pricing, wait-vs-divert decision, alternative ports) is the same code path as Simulate mode.
+- **Live** — severity is derived from current marine conditions (wind, waves, precipitation, visibility) fetched from WeatherAPI.com, never fabricated; the rest of the pipeline (lane pricing, wait-vs-divert decision, alternative ports) is the same code path as Simulate mode.
 
 Both are surfaced on the `/disruption` page with a propagation diagram, and either result can be turned into a one-click PDF via `POST /api/disruption/decision-brief`.
 

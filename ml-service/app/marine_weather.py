@@ -9,24 +9,34 @@ reading is just a different way of arriving at a severity value; see
 ``app/disruption_engine.py``'s module docstring for why that separation
 matters.
 
-Data source: Open-Meteo (https://open-meteo.com), a free, no-API-key weather
-service. Two of its endpoints are used because wind/precipitation and marine
-wave data are served separately there:
+Data source
+-----------
+WeatherAPI.com's Marine API (https://www.weatherapi.com). One call returns
+wind, precipitation, visibility AND wave/swell height together for a
+lat/lon, which is why it was chosen: the previous source (Open-Meteo) needed
+two separate endpoint calls for the same data, and this app runs on Render,
+where the outbound IP is shared with other tenants — a free-tier rate limit
+on a shared IP is something this app has no control over and can't "fix" by
+calling less. A single-endpoint, API-keyed source sidesteps that: the quota
+is per-key, not per-shared-IP.
 
-  * ``api.open-meteo.com/v1/forecast``         -> wind, precipitation
-  * ``marine-api.open-meteo.com/v1/marine``    -> wave height, swell, period
+Requires an API key in the ``WEATHERAPI_KEY`` environment variable (free
+tier: https://www.weatherapi.com/pricing.aspx, no card required). Without
+it, live conditions are unavailable — see the module docstring's "Honesty
+requirements" below for why this fails loudly rather than silently.
 
-Only the standard library (``urllib``) is used for the HTTP call, so this
-adds no new dependency. No API key is required or read.
+Only the standard library (``urllib``, ``os``) is used for the HTTP call, so
+this adds no new Python dependency.
 
 Honesty requirements this module follows
 -----------------------------------------
-* If the network call fails, times out, or a port has no coordinates on
-  file, this returns a result with ``status="unavailable"`` and NO severity
-  number — it never invents a value or silently defaults to "calm". The
-  caller (``ModelBundle`` in ``app/utils.py``) must refuse to run a "live"
-  disruption assessment when it gets an unavailable reading rather than
-  quietly substituting severity 0.
+* If the network call fails, times out, the key is missing/invalid, or a
+  port has no coordinates on file, this returns a result with
+  ``status="unavailable"`` and NO severity number — it never invents a
+  value or silently defaults to "calm". The caller (``ModelBundle`` in
+  ``app/utils.py``) must refuse to run a "live" disruption assessment when
+  it gets an unavailable reading rather than quietly substituting
+  severity 0.
 * The severity thresholds below (what counts as a "severe" wave, wind speed,
   or rainfall) are drawn from named, public meteorological/sea-state
   conventions (documented on each constant) — they are reference points for
@@ -36,36 +46,42 @@ Honesty requirements this module follows
   build environment (no internet access here). The HTTP plumbing is
   isolated in ``_http_get_json`` and unit-tested with a mocked transport;
   before relying on it for a demo, do one real end-to-end call against a
-  real port and confirm the field names Open-Meteo returns still match
-  ``_WIND_PARAMS``/``_MARINE_PARAMS`` below (external APIs occasionally
-  rename or restructure fields).
+  real port and confirm the field names WeatherAPI returns still match
+  ``_HOUR_FIELDS`` below (external APIs occasionally rename or restructure
+  fields).
 """
 from __future__ import annotations
 
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
-WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
-MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine"
+WEATHERAPI_URL = "https://api.weatherapi.com/v1/marine.json"
+WEATHERAPI_KEY_ENV = "WEATHERAPI_KEY"
 REQUEST_TIMEOUT_S = 6
-# Open-Meteo's free tier rate-limits by source IP, and on a platform like
-# Render that IP is often shared with other unrelated services — so a 429
-# here doesn't necessarily mean this app is calling too often (this
-# endpoint is already covered by a 5-minute cache bucket upstream, see
-# ModelBundle's live_disruption cache key in utils.py). It usually clears
-# within a couple of seconds, so a couple of short, polite retries recover
-# most of them instead of surfacing "unavailable" for what is often a
-# passing spike from someone else's traffic.
+# A couple of short, polite retries on a 429 — WeatherAPI's free tier is
+# generous (1M calls/month) but still rate-limited per-key/per-second, so an
+# isolated burst is worth a brief retry rather than surfacing "unavailable"
+# immediately.
 RATE_LIMIT_RETRIES = 2
 RATE_LIMIT_BACKOFF_S = 1.5
 
-_WIND_PARAMS = "wind_speed_10m,wind_direction_10m,precipitation"
-_HOURLY_PARAMS = "visibility"
-_MARINE_PARAMS = "wave_height,wave_period,swell_wave_height"
+# Field names WeatherAPI's `forecast.forecastday[0].hour[N]` objects are
+# expected to use. Documented here (rather than buried in the function
+# below) so a future field-name change on their end is a one-line fix.
+_HOUR_FIELDS = {
+    "wind_speed_kmh": "wind_kph",
+    "wind_direction_deg": "wind_degree",
+    "precipitation_mm_h": "precip_mm",
+    "visibility_km": "vis_km",
+    "wave_height_m": "sig_ht_mt",
+    "swell_wave_height_m": "swell_ht_mt",
+    "wave_period_s": "swell_period_secs",
+}
 
 # ---- labelled reference points (see module docstring) ----------------------
 # Wind: ~62 km/h is the low end of Beaufort 8 ("gale"); ~89 km/h is the low
@@ -86,13 +102,17 @@ def clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
 
+def _weatherapi_key() -> str:
+    return os.environ.get(WEATHERAPI_KEY_ENV, "").strip()
+
+
 def _http_get_json(url: str, params: dict[str, Any], timeout: float = REQUEST_TIMEOUT_S) -> dict[str, Any]:
     """Thin, mockable HTTP GET-JSON wrapper (stdlib only).
 
     Retries a 429 (Too Many Requests) a couple of times with a short delay
-    before giving up — see RATE_LIMIT_RETRIES above for why. Any other
-    error (network failure, timeout, 4xx/5xx other than 429) is raised
-    immediately with no retry, same as before.
+    before giving up — see RATE_LIMIT_RETRIES above. Any other error
+    (network failure, timeout, 4xx/5xx other than 429) is raised
+    immediately with no retry.
     """
     query = urllib.parse.urlencode(params)
     full_url = f"{url}?{query}"
@@ -112,52 +132,48 @@ def _http_get_json(url: str, params: dict[str, Any], timeout: float = REQUEST_TI
 def fetch_conditions(lat: float, lon: float) -> dict[str, Any]:
     """Fetch current wind/precipitation/visibility + wave/swell for one point.
 
-    Returns a dict always shaped the same way; on any failure the numeric
-    fields are ``None`` and ``status`` is ``"unavailable"`` with an
-    ``error`` message — never a fabricated reading.
+    Returns a dict always shaped the same way; on any failure (missing key,
+    network error, timeout, unexpected response shape) the numeric fields
+    are ``None`` and ``status`` is ``"unavailable"`` with an ``error``
+    message — never a fabricated reading.
     """
     out: dict[str, Any] = {
         "wind_speed_kmh": None, "wind_direction_deg": None, "precipitation_mm_h": None,
         "visibility_km": None, "wave_height_m": None, "swell_wave_height_m": None, "wave_period_s": None,
-        "status": "ok", "error": None,
+        "status": "ok", "error": None, "source": "weatherapi",
     }
-    try:
-        # NOTE: `visibility` is not a valid Open-Meteo `current` variable (it's
-        # only offered under `hourly`/`minutely_15`); requesting it in `current`
-        # makes Open-Meteo reject the whole call with a 400, which previously
-        # took wind/precipitation down along with it. It's requested here via
-        # `hourly` instead, and we read off the first (current-hour) value.
-        weather = _http_get_json(WEATHER_API_URL, {
-            "latitude": lat, "longitude": lon, "current": _WIND_PARAMS,
-            "hourly": _HOURLY_PARAMS, "forecast_days": 1, "timezone": "UTC",
-        })
-        current = weather.get("current", {})
-        out["wind_speed_kmh"] = current.get("wind_speed_10m")
-        out["wind_direction_deg"] = current.get("wind_direction_10m")
-        out["precipitation_mm_h"] = current.get("precipitation")
-        vis_list = weather.get("hourly", {}).get("visibility") or []
-        vis_m = vis_list[0] if vis_list else None
-        out["visibility_km"] = round(vis_m / 1000.0, 1) if vis_m is not None else None
-    except Exception as exc:  # network error, timeout, bad response shape, etc.
-        out["status"] = "partial"
-        out["error"] = f"wind/precipitation fetch failed: {exc}"
+
+    key = _weatherapi_key()
+    if not key:
+        out["status"] = "unavailable"
+        out["error"] = f"{WEATHERAPI_KEY_ENV} not configured"
+        return out
 
     try:
-        marine = _http_get_json(MARINE_API_URL, {
-            "latitude": lat, "longitude": lon, "current": _MARINE_PARAMS, "timezone": "UTC",
-        })
-        current = marine.get("current", {})
-        out["wave_height_m"] = current.get("wave_height")
-        out["swell_wave_height_m"] = current.get("swell_wave_height")
-        out["wave_period_s"] = current.get("wave_period")
-    except Exception as exc:
-        out["status"] = "partial" if out["status"] == "ok" else "unavailable"
-        out["error"] = (out["error"] + "; " if out["error"] else "") + f"marine fetch failed: {exc}"
+        data = _http_get_json(WEATHERAPI_URL, {"key": key, "q": f"{lat},{lon}", "days": 1})
+        forecast_days = data.get("forecast", {}).get("forecastday") or []
+        if not forecast_days:
+            raise RuntimeError("no forecast data in response")
+        hours = forecast_days[0].get("hour") or []
+        if not hours:
+            raise RuntimeError("no hourly data in response")
+        # WeatherAPI returns 24 local hourly buckets for the day rather than
+        # a single "current" reading; pick the one matching the current UTC
+        # hour (falling back to the first bucket if the match fails).
+        now_hour = time.gmtime().tm_hour
+        hour_data = next((h for h in hours if str(h.get("time", "")).endswith(f"{now_hour:02d}:00")), hours[0])
+        for out_key, src_key in _HOUR_FIELDS.items():
+            out[out_key] = hour_data.get(src_key)
+    except Exception as exc:  # network error, timeout, bad response shape, invalid key, etc.
+        out["status"] = "unavailable"
+        out["error"] = f"weatherapi fetch failed: {exc}"
+        return out
 
     have_any = any(out[k] is not None for k in (
         "wind_speed_kmh", "precipitation_mm_h", "wave_height_m", "swell_wave_height_m"))
     if not have_any:
         out["status"] = "unavailable"
+        out["error"] = "weatherapi returned no usable readings"
     return out
 
 

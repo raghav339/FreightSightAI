@@ -4,55 +4,71 @@ The HTTP transport (`_http_get_json`) is monkeypatched in every test — this
 environment has no internet access, and even where it does, a unit test
 should not depend on a third-party service being up. See the module
 docstring's "NOT tested against a live network call" note: these tests
-verify the scoring/fallback logic, not that Open-Meteo's real response shape
+verify the scoring/fallback logic, not that WeatherAPI's real response shape
 still matches what we assume.
 """
+import os
 import unittest
 from unittest.mock import patch
 
 from app import marine_weather as mw
 
 
-def weather_response(wind=None, direction=None, precip=None, visibility_m=None):
-    current = {}
-    if wind is not None:
-        current["wind_speed_10m"] = wind
+def weatherapi_response(wind_kph=None, direction=None, precip_mm=None, vis_km=None,
+                         sig_ht_mt=None, swell_ht_mt=None, swell_period_secs=None):
+    hour = {"time": "2026-01-01 00:00"}
+    if wind_kph is not None:
+        hour["wind_kph"] = wind_kph
     if direction is not None:
-        current["wind_direction_10m"] = direction
-    if precip is not None:
-        current["precipitation"] = precip
-    if visibility_m is not None:
-        current["visibility"] = visibility_m
-    return {"current": current}
-
-
-def marine_response(wave=None, swell=None, period=None):
-    current = {}
-    if wave is not None:
-        current["wave_height"] = wave
-    if swell is not None:
-        current["swell_wave_height"] = swell
-    if period is not None:
-        current["wave_period"] = period
-    return {"current": current}
+        hour["wind_degree"] = direction
+    if precip_mm is not None:
+        hour["precip_mm"] = precip_mm
+    if vis_km is not None:
+        hour["vis_km"] = vis_km
+    if sig_ht_mt is not None:
+        hour["sig_ht_mt"] = sig_ht_mt
+    if swell_ht_mt is not None:
+        hour["swell_ht_mt"] = swell_ht_mt
+    if swell_period_secs is not None:
+        hour["swell_period_secs"] = swell_period_secs
+    return {"forecast": {"forecastday": [{"hour": [hour]}]}}
 
 
 class TestFetchConditions(unittest.TestCase):
-    def test_success_maps_both_endpoints(self):
-        def fake_get(url, params, timeout=6):
-            if url == mw.WEATHER_API_URL:
-                return weather_response(wind=48.0, direction=180, precip=2.0, visibility_m=8000)
-            return marine_response(wave=4.2, swell=3.1, period=9.0)
+    def setUp(self):
+        self._old_key = os.environ.pop(mw.WEATHERAPI_KEY_ENV, None)
+        os.environ[mw.WEATHERAPI_KEY_ENV] = "test-key"
 
-        with patch.object(mw, "_http_get_json", side_effect=fake_get):
+    def tearDown(self):
+        if self._old_key is not None:
+            os.environ[mw.WEATHERAPI_KEY_ENV] = self._old_key
+        else:
+            os.environ.pop(mw.WEATHERAPI_KEY_ENV, None)
+
+    def test_success_maps_fields(self):
+        with patch.object(mw, "_http_get_json", return_value=weatherapi_response(
+                wind_kph=48.0, direction=180, precip_mm=2.0, vis_km=8.0,
+                sig_ht_mt=4.2, swell_ht_mt=3.1, swell_period_secs=9.0)):
             out = mw.fetch_conditions(-19.8, 34.8)
         self.assertEqual(out["status"], "ok")
+        self.assertEqual(out["source"], "weatherapi")
         self.assertEqual(out["wind_speed_kmh"], 48.0)
-        self.assertEqual(out["wave_height_m"], 4.2)
+        self.assertEqual(out["wind_direction_deg"], 180)
+        self.assertEqual(out["precipitation_mm_h"], 2.0)
         self.assertEqual(out["visibility_km"], 8.0)
+        self.assertEqual(out["wave_height_m"], 4.2)
+        self.assertEqual(out["swell_wave_height_m"], 3.1)
+        self.assertEqual(out["wave_period_s"], 9.0)
         self.assertIsNone(out["error"])
 
-    def test_both_endpoints_down_is_unavailable_not_a_crash(self):
+    def test_no_key_configured_is_unavailable_not_a_crash(self):
+        os.environ.pop(mw.WEATHERAPI_KEY_ENV, None)
+        out = mw.fetch_conditions(-19.8, 34.8)
+        self.assertEqual(out["status"], "unavailable")
+        self.assertIsNone(out["wind_speed_kmh"])
+        self.assertIn("WEATHERAPI_KEY", out["error"])
+
+    def test_network_failure_is_unavailable_not_a_crash(self):
         with patch.object(mw, "_http_get_json", side_effect=TimeoutError("timed out")):
             out = mw.fetch_conditions(-19.8, 34.8)
         self.assertEqual(out["status"], "unavailable")
@@ -60,17 +76,31 @@ class TestFetchConditions(unittest.TestCase):
         self.assertIsNone(out["wave_height_m"])
         self.assertIsNotNone(out["error"])
 
-    def test_one_endpoint_down_is_partial_not_unavailable(self):
-        def fake_get(url, params, timeout=6):
-            if url == mw.WEATHER_API_URL:
-                return weather_response(wind=30.0)
-            raise ConnectionError("marine api down")
+    def test_rate_limit_retries_then_succeeds(self):
+        calls = {"n": 0}
 
-        with patch.object(mw, "_http_get_json", side_effect=fake_get):
+        def fake_urlopen(url, timeout=6):
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise mw.urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+            import io
+            import json as _json
+            body = _json.dumps(weatherapi_response(wind_kph=20.0)).encode("utf-8")
+            return io.BytesIO(body)
+
+        # Patch urlopen (not _http_get_json) so the real retry loop runs.
+        with patch.object(mw.time, "sleep", return_value=None), \
+             patch.object(mw.urllib.request, "urlopen", side_effect=fake_urlopen):
             out = mw.fetch_conditions(-19.8, 34.8)
-        self.assertEqual(out["status"], "partial")
-        self.assertEqual(out["wind_speed_kmh"], 30.0)
-        self.assertIsNone(out["wave_height_m"])
+        self.assertEqual(out["status"], "ok")
+        self.assertEqual(out["wind_speed_kmh"], 20.0)
+        self.assertGreaterEqual(calls["n"], 2)
+
+    def test_empty_forecast_is_unavailable(self):
+        with patch.object(mw, "_http_get_json", return_value={"forecast": {"forecastday": []}}):
+            out = mw.fetch_conditions(-19.8, 34.8)
+        self.assertEqual(out["status"], "unavailable")
+        self.assertIsNotNone(out["error"])
 
 
 class TestComputeSeverity(unittest.TestCase):

@@ -244,7 +244,7 @@ export default function DisruptionSimulator() {
             <p className="mb-5 flex items-start gap-1.5 text-xs text-inksoft">
               <Wind className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               Severity is derived from current wind, wave and precipitation conditions at the port
-              (<a href="https://open-meteo.com" target="_blank" rel="noreferrer" className="underline">Open-Meteo</a>),
+              (<a href="https://www.weatherapi.com" target="_blank" rel="noreferrer" className="underline">WeatherAPI.com</a>),
               not chosen by hand. If live conditions can't be fetched, this will say so rather than guess.
             </p>
           )}
