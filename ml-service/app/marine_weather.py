@@ -43,6 +43,7 @@ Honesty requirements this module follows
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -51,6 +52,16 @@ from typing import Any
 WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine"
 REQUEST_TIMEOUT_S = 6
+# Open-Meteo's free tier rate-limits by source IP, and on a platform like
+# Render that IP is often shared with other unrelated services — so a 429
+# here doesn't necessarily mean this app is calling too often (this
+# endpoint is already covered by a 5-minute cache bucket upstream, see
+# ModelBundle's live_disruption cache key in utils.py). It usually clears
+# within a couple of seconds, so a couple of short, polite retries recover
+# most of them instead of surfacing "unavailable" for what is often a
+# passing spike from someone else's traffic.
+RATE_LIMIT_RETRIES = 2
+RATE_LIMIT_BACKOFF_S = 1.5
 
 _WIND_PARAMS = "wind_speed_10m,wind_direction_10m,precipitation"
 _HOURLY_PARAMS = "visibility"
@@ -76,10 +87,26 @@ def clamp(value: float, lo: float, hi: float) -> float:
 
 
 def _http_get_json(url: str, params: dict[str, Any], timeout: float = REQUEST_TIMEOUT_S) -> dict[str, Any]:
-    """Thin, mockable HTTP GET-JSON wrapper (stdlib only)."""
+    """Thin, mockable HTTP GET-JSON wrapper (stdlib only).
+
+    Retries a 429 (Too Many Requests) a couple of times with a short delay
+    before giving up — see RATE_LIMIT_RETRIES above for why. Any other
+    error (network failure, timeout, 4xx/5xx other than 429) is raised
+    immediately with no retry, same as before.
+    """
     query = urllib.parse.urlencode(params)
-    with urllib.request.urlopen(f"{url}?{query}", timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    full_url = f"{url}?{query}"
+    attempt = 0
+    while True:
+        try:
+            with urllib.request.urlopen(full_url, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < RATE_LIMIT_RETRIES:
+                attempt += 1
+                time.sleep(RATE_LIMIT_BACKOFF_S * attempt)
+                continue
+            raise
 
 
 def fetch_conditions(lat: float, lon: float) -> dict[str, Any]:
