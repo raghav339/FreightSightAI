@@ -52,7 +52,8 @@ WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
 MARINE_API_URL = "https://marine-api.open-meteo.com/v1/marine"
 REQUEST_TIMEOUT_S = 6
 
-_WIND_PARAMS = "wind_speed_10m,wind_direction_10m,precipitation,visibility"
+_WIND_PARAMS = "wind_speed_10m,wind_direction_10m,precipitation"
+_HOURLY_PARAMS = "visibility"
 _MARINE_PARAMS = "wave_height,wave_period,swell_wave_height"
 
 # ---- labelled reference points (see module docstring) ----------------------
@@ -94,14 +95,21 @@ def fetch_conditions(lat: float, lon: float) -> dict[str, Any]:
         "status": "ok", "error": None,
     }
     try:
+        # NOTE: `visibility` is not a valid Open-Meteo `current` variable (it's
+        # only offered under `hourly`/`minutely_15`); requesting it in `current`
+        # makes Open-Meteo reject the whole call with a 400, which previously
+        # took wind/precipitation down along with it. It's requested here via
+        # `hourly` instead, and we read off the first (current-hour) value.
         weather = _http_get_json(WEATHER_API_URL, {
-            "latitude": lat, "longitude": lon, "current": _WIND_PARAMS, "timezone": "UTC",
+            "latitude": lat, "longitude": lon, "current": _WIND_PARAMS,
+            "hourly": _HOURLY_PARAMS, "forecast_days": 1, "timezone": "UTC",
         })
         current = weather.get("current", {})
         out["wind_speed_kmh"] = current.get("wind_speed_10m")
         out["wind_direction_deg"] = current.get("wind_direction_10m")
         out["precipitation_mm_h"] = current.get("precipitation")
-        vis_m = current.get("visibility")
+        vis_list = weather.get("hourly", {}).get("visibility") or []
+        vis_m = vis_list[0] if vis_list else None
         out["visibility_km"] = round(vis_m / 1000.0, 1) if vis_m is not None else None
     except Exception as exc:  # network error, timeout, bad response shape, etc.
         out["status"] = "partial"

@@ -423,10 +423,22 @@ class AISStreamCollector:
             "FilterMessageTypes": ["PositionReport", "ShipStaticData", "StaticDataReport"],
         }
 
+    # A 429 at handshake means AISStream is actively rejecting the connection
+    # attempt (rate limit or account-level flag) - hammering it with the
+    # normal short backoff just re-triggers the same rejection over and over
+    # and, per aisstream's own maintainers, can get an account flagged at the
+    # account level (surviving key rotation) if a buggy client does this for
+    # long enough. So a 429 gets a long, fixed cooldown instead of the normal
+    # exponential backoff.
+    RATE_LIMIT_COOLDOWN_S = 300
+    MAX_BACKOFF_S = 60
+    STABLE_CONNECTION_S = 60
+
     def _loop(self):
         backoff = 2
         while not self.stop_event.is_set():
             ws = None
+            connected_at = None
             try:
                 self.last_connect_at = _utcnow().isoformat()
                 ws = websocket.create_connection(
@@ -440,7 +452,7 @@ class AISStreamCollector:
                 ws.send(json.dumps(self._subscription()))
                 with self.lock:
                     self._ws = ws
-                backoff = 2
+                connected_at = time.monotonic()
                 while not self.stop_event.is_set():
                     raw = ws.recv()
                     if raw is None:
@@ -450,6 +462,14 @@ class AISStreamCollector:
                     event = json.loads(raw)
                     self.messages += 1
                     typ = event.get("MessageType")
+                    # Reset backoff only once the connection has proven
+                    # itself stable for a while - not the instant the
+                    # handshake succeeds, since a connection that gets
+                    # closed again immediately (e.g. right after a 429-style
+                    # rejection) would otherwise cause the same fast-retry
+                    # loop this cooldown exists to prevent.
+                    if backoff != 2 and time.monotonic() - connected_at >= self.STABLE_CONNECTION_S:
+                        backoff = 2
                     try:
                         if typ == "PositionReport":
                             self._save_position(event)
@@ -459,8 +479,12 @@ class AISStreamCollector:
                         self.last_error = f"Message handling error ({typ}): {exc}"
             except Exception as exc:
                 self.last_error = str(exc)
-                self.stop_event.wait(min(backoff, 60))
-                backoff = min(backoff * 2, 60)
+                if "429" in str(exc):
+                    self.stop_event.wait(self.RATE_LIMIT_COOLDOWN_S)
+                    backoff = self.MAX_BACKOFF_S
+                else:
+                    self.stop_event.wait(min(backoff, self.MAX_BACKOFF_S))
+                    backoff = min(backoff * 2, self.MAX_BACKOFF_S)
             finally:
                 with self.lock:
                     if self._ws is ws:

@@ -24,7 +24,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getPortCoords } from "../../data/portCoordinates.js";
-import { buildSeaRoute } from "../../data/seaRoutes.js";
+import { buildSeaRoute, smoothPath } from "../../data/seaRoutes.js";
 
 function portIcon(color) {
   return L.divIcon({
@@ -39,8 +39,8 @@ function portIcon(color) {
   });
 }
 
-const ORIGIN_ICON = portIcon("#2FA866");
-const DEST_ICON = portIcon("#E5732B");
+const ORIGIN_ICON = portIcon("#2B6458");
+const DEST_ICON = portIcon("#B44A2E");
 
 // Build a maritime corridor using known sea lanes and chokepoints instead of
 // drawing a straight/geometric line between the two ports.
@@ -112,6 +112,10 @@ export default function RouteMap({ origin, destination, className }) {
     ? buildSeaRoute(origin, destination, originCoords, destCoords)
     : null;
   const boundsPoints = path?.length ? path : endpointPoints;
+  // The line drawn on the map is a smoothed curve through the waypoints
+  // (nicer to look at, still passes through every one of them); the
+  // waypoint dots themselves stay at the raw chokepoint coordinates.
+  const curvedPath = path?.length >= 3 ? smoothPath(path) : path;
 
   return (
     <div className={className} style={{ position: "relative" }}>
@@ -122,7 +126,7 @@ export default function RouteMap({ origin, destination, className }) {
         zoomControl={false}
         attributionControl={true}
         className="h-full w-full"
-        style={{ background: "#cfe3ee" }}
+        style={{ background: "#d8e2df" }}
       >
         <TileLayer
           className="route-map-dark-tiles"
@@ -137,13 +141,20 @@ export default function RouteMap({ origin, destination, className }) {
 
         {path && (
           <>
+            {/* Pale casing underneath, engraved-chart style, so the dashed
+                course line stays legible over both land and water tiles. */}
             <Polyline
-              positions={path}
+              positions={curvedPath}
+              pathOptions={{ color: "#FAF5E9", weight: 5, opacity: 0.55, lineCap: "round" }}
+            />
+            <Polyline
+              positions={curvedPath}
               pathOptions={{
-                color: "#1D4ED8",
-                weight: 3,
-                opacity: 0.92,
-                dashArray: "8 8",
+                color: "#1C3144",
+                weight: 2,
+                opacity: 0.9,
+                dashArray: "1 7",
+                lineCap: "round",
                 className: "route-course-line",
               }}
             />
@@ -151,12 +162,12 @@ export default function RouteMap({ origin, destination, className }) {
               <CircleMarker
                 key={`waypoint-${index}`}
                 center={point}
-                radius={2.5}
+                radius={2}
                 pathOptions={{
-                  color: "#1D4ED8",
+                  color: "#7E6C4C",
                   weight: 1,
-                  fillColor: "#1D4ED8",
-                  fillOpacity: 0.75,
+                  fillColor: "#FAF5E9",
+                  fillOpacity: 0.9,
                 }}
               />
             ))}

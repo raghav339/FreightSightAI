@@ -164,10 +164,10 @@ export default function ResultCards({ result }) {
         </div>
       </WideSection>}
 
-      {result.idle_management_advice && <WideSection eyebrow="Idle scenario management" title="Turnaround and idle-time guidance"><p className="result-copy"><TimerReset className="inline-icon" /> {result.idle_management_advice}</p></WideSection>}
-      {(result.transit_note || result.stowage_note) && <WideSection eyebrow="Transit & stowage" title="Voyage operating notes"><p className="result-copy"><Route className="inline-icon" /> {result.transit_note}</p>{result.stowage_note && <p className="result-copy mt-2">{result.stowage_note}</p>}</WideSection>}
-      {result.congestion_warning && <WideSection eyebrow="Risk mitigation" title="Congestion early warning"><p className="result-copy"><RadioTower className="inline-icon" /> {result.congestion_warning}</p></WideSection>}
-      {result.contracting_strategy && <WideSection eyebrow="Spot → short/mid-term contracting" title="Contracting strategy"><p className="result-copy"><Anchor className="inline-icon" /> {result.contracting_strategy}</p></WideSection>}
+      {result.idle_management_advice && <WideSection eyebrow="Idle scenario management" title="Turnaround and idle-time guidance"><p className="result-copy result-copy--icon"><TimerReset className="inline-icon" /><span>{result.idle_management_advice}</span></p></WideSection>}
+      {(result.transit_note || result.stowage_note) && <WideSection eyebrow="Transit & stowage" title="Voyage operating notes"><p className="result-copy result-copy--icon"><Route className="inline-icon" /><span>{result.transit_note}</span></p>{result.stowage_note && <p className="result-copy mt-2">{result.stowage_note}</p>}</WideSection>}
+      {result.congestion_warning && <WideSection eyebrow="Risk mitigation" title="Congestion early warning"><p className="result-copy result-copy--icon"><RadioTower className="inline-icon" /><span>{result.congestion_warning}</span></p></WideSection>}
+      {result.contracting_strategy && <WideSection eyebrow="Spot → short/mid-term contracting" title="Contracting strategy"><p className="result-copy result-copy--icon"><Anchor className="inline-icon" /><span>{result.contracting_strategy}</span></p></WideSection>}
 
       {(result.feature_importance?.length > 0 || result.top_drivers?.length > 0) && <WideSection eyebrow="Why this forecast" title="Model explainability">
         <div className="result-two-col">

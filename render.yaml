@@ -28,7 +28,7 @@ services:
       # only when they are called directly. The normal application flow
       # is Frontend -> Backend -> ML.
       - key: BACKEND_ORIGIN
-        value: "https://freightsightai-backend.onrender.com"
+        value: "https://freightsightai-backend-8i52.onrender.com"
       - key: AISSTREAM_API_KEY
         sync: false
       # AIS history uses the same persistent MySQL database as the backend.
@@ -65,10 +65,10 @@ services:
         value: "20"
       # Backend -> ML service. This MUST NOT be the frontend/backend URL.
       - key: ML_SERVICE_URL
-        value: "https://freightsightai-ml-service.onrender.com"
+        value: "https://freightsightai-mlservice.onrender.com"
       # Backend CORS: allow requests from the deployed frontend.
       - key: FRONTEND_ORIGIN
-        value: "https://freightsightai-frontend.onrender.com"
+        value: "https://freightsightaifrontend.onrender.com"
       - key: JWT_SECRET
         sync: false
       # --- Persistent database ---
@@ -103,7 +103,11 @@ services:
     rootDir: frontend
     buildCommand: "npm install && npm run build"
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       # Frontend -> Backend API. Do NOT point this at the ML service.
       - key: VITE_API_URL
-        value: "https://freightsightai-backend.onrender.com/api"
+        value: "https://freightsightai-backend-8i52.onrender.com/api"

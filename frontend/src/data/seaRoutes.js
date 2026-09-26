@@ -49,9 +49,27 @@ const WAYPOINTS = {
   dondraHead: { lat: 5.9, lng: 80.6 },
   // Coastal hops offshore Australia's east coast (Coral Sea side), so the
   // line up to Torres Strait follows the coast instead of cutting across
-  // Queensland/NSW.
-  coralSeaMid: { lat: -25.5, lng: 154.3 },
-  coralSeaNorth: { lat: -17.5, lng: 147.8 },
+  // Queensland/NSW. Each point is checked for clearance against the
+  // nearest landmass/island at that latitude:
+  //   - offshoreByronBay clears the NSW/QLD border headlands
+  //   - offshoreFraser clears Fraser Island (east coast ~153.3E)
+  //   - offshoreCapricorn clears the Capricorn Coast/Great Keppel bulge
+  //   - offshoreWhitsunday clears the Whitsundays/Mackay coast
+  //   - coralSeaNorth clears the Great Barrier Reef fringe off Cairns
+  //   - capeYorkMid / capeYorkTip clear Cape York Peninsula itself, which
+  //     a direct Cairns -> Torres Strait line would otherwise cut across
+  // These are spaced closely enough along the coast that the Catmull-Rom
+  // smoothing pass below can't overshoot far enough sideways at any one
+  // turn to swing back in over land before the next waypoint reins it in
+  // — the previous, wider-spaced version of this chain let exactly that
+  // happen around the Fraser Island -> Coral Sea turn.
+  offshoreByronBay: { lat: -28.8, lng: 154.35 },
+  offshoreFraser: { lat: -24.9, lng: 154.75 },
+  offshoreCapricorn: { lat: -22.6, lng: 152.7 },
+  offshoreWhitsunday: { lat: -19.8, lng: 149.9 },
+  coralSeaNorth: { lat: -17.0, lng: 148.5 },
+  capeYorkMid: { lat: -14.0, lng: 146.4 },
+  capeYorkTip: { lat: -11.2, lng: 143.6 },
 };
 
 function pt(w) {
@@ -106,10 +124,22 @@ export function buildSeaRoute(originName, destName, originCoords, destCoords) {
   switch (region) {
     case "australia": {
       const points = [o];
-      // Ports south of ~24°S (e.g. Newcastle, NSW) need an extra hop to
-      // stay offshore on the way up to the Coral Sea leg.
-      if (originCoords.lat < -24) points.push(pt(WAYPOINTS.coralSeaMid));
-      points.push(pt(WAYPOINTS.coralSeaNorth), pt(WAYPOINTS.torresStrait), pt(WAYPOINTS.arafuraSea), pt(WAYPOINTS.bandaSea), pt(WAYPOINTS.lombokStrait));
+      // Each hop is only added if the origin is actually south of it —
+      // a Queensland port like Abbot Point starts north of Fraser Island
+      // already, so it shouldn't be routed backward through it. Ports
+      // further south pick up every hop in the chain ahead of them.
+      if (originCoords.lat < -24) points.push(pt(WAYPOINTS.offshoreByronBay), pt(WAYPOINTS.offshoreFraser));
+      if (originCoords.lat < -22.6) points.push(pt(WAYPOINTS.offshoreCapricorn));
+      if (originCoords.lat < -19.8) points.push(pt(WAYPOINTS.offshoreWhitsunday));
+      points.push(
+        pt(WAYPOINTS.coralSeaNorth),
+        pt(WAYPOINTS.capeYorkMid),
+        pt(WAYPOINTS.capeYorkTip),
+        pt(WAYPOINTS.torresStrait),
+        pt(WAYPOINTS.arafuraSea),
+        pt(WAYPOINTS.bandaSea),
+        pt(WAYPOINTS.lombokStrait)
+      );
       return [...points, ...finalApproach(destName, d, "east")];
     }
     case "indonesia":
@@ -137,6 +167,58 @@ export function buildSeaRoute(originName, destName, originCoords, destCoords) {
       return [o, bowed, ...finalApproach(destName, d, approach)];
     }
   }
+}
+
+function lerp(a, b, t) {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/**
+ * Turns a polyline of [lat, lng] waypoints into a smooth curve that still
+ * passes exactly through every original waypoint, using a centripetal
+ * Catmull-Rom spline (alpha = 0.5). Centripetal parameterization is used
+ * specifically because our waypoint spacing is very uneven (short coastal
+ * hops next to long open-ocean legs) — the more common uniform/chordal
+ * variants can loop or overshoot past a waypoint under exactly that kind
+ * of spacing, which would defeat the point of choosing waypoints for land
+ * clearance in the first place.
+ *
+ * This is a purely visual smoothing pass — it does not know about
+ * coastlines — so it's applied on top of waypoints that already carry a
+ * deliberate offshore safety margin (see WAYPOINTS above), not as a
+ * substitute for them.
+ */
+export function smoothPath(points, samplesPerSegment = 14) {
+  if (!points || points.length < 3) return points || [];
+  const pts = points.map(([lat, lng]) => ({ x: lng, y: lat }));
+  const n = pts.length;
+  const out = [];
+
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(n - 1, i + 2)];
+
+    const alpha = 0.5;
+    const t0 = 0;
+    const t1 = t0 + Math.pow(Math.hypot(p1.x - p0.x, p1.y - p0.y), alpha) || 0.0001;
+    const t2 = t1 + Math.pow(Math.hypot(p2.x - p1.x, p2.y - p1.y), alpha) || t1 + 0.0001;
+    const t3 = t2 + Math.pow(Math.hypot(p3.x - p2.x, p3.y - p2.y), alpha) || t2 + 0.0001;
+
+    for (let s = 0; s < samplesPerSegment; s++) {
+      const t = t1 + (t2 - t1) * (s / samplesPerSegment);
+      const A1 = lerp(p0, p1, (t - t0) / (t1 - t0));
+      const A2 = lerp(p1, p2, (t - t1) / (t2 - t1));
+      const A3 = lerp(p2, p3, (t - t2) / (t3 - t2));
+      const B1 = lerp(A1, A2, (t - t0) / (t2 - t0));
+      const B2 = lerp(A2, A3, (t - t1) / (t3 - t1));
+      const C = lerp(B1, B2, (t - t1) / (t2 - t1));
+      out.push([C.y, C.x]);
+    }
+  }
+  out.push([pts[n - 1].y, pts[n - 1].x]);
+  return out;
 }
 
 export default buildSeaRoute;

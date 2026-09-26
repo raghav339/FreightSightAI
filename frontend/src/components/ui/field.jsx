@@ -163,15 +163,15 @@ export function Select({ className, children, value, defaultValue, onChange, req
               onMouseEnter={() => !o.disabled && setActive(i)}
               onClick={() => commit(i)}
               className={cn(
-                "flex cursor-pointer items-center justify-between gap-2 px-3 py-2 transition-colors",
+                "flex cursor-pointer items-start justify-between gap-2 px-3 py-2 transition-colors",
                 i === active && "bg-parchment",
                 o.value === current && o.value !== "" && "text-vermilion",
                 o.value === "" && "text-rule",
                 o.disabled && "cursor-not-allowed opacity-45"
               )}
             >
-              <span className="truncate">{o.label}</span>
-              {o.value === current && o.value !== "" && <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+              <span className="whitespace-normal leading-snug">{o.label}</span>
+              {o.value === current && o.value !== "" && <Check className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
             </li>
           ))}
         </ul>
