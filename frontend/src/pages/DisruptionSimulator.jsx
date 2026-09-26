@@ -360,6 +360,11 @@ export default function DisruptionSimulator() {
                   Data coverage {Math.round((data.live_conditions.coverage || 0) * 100)}% ·
                   severity derived against reference points (storm-force wind, very-rough sea, violent rain, good visibility) — see the assumptions below.
                 </p>
+                {data.live_conditions.conditions.status !== "ok" && data.live_conditions.conditions.error && (
+                  <p className="mt-1.5 text-xs text-vermilion">
+                    Some readings unavailable: {data.live_conditions.conditions.error}
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}

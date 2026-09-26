@@ -63,7 +63,15 @@ body {
 
 select { color-scheme:light; }
 select option { background:rgb(var(--c-paper)); color:rgb(var(--c-ink)); }
-:where(a,button,input,select,textarea,[tabindex]):focus-visible { outline:2px solid rgb(var(--c-vermilion)); outline-offset:2px; }
+:where(a,button,[tabindex]):focus-visible { outline:2px solid rgb(var(--c-vermilion)); outline-offset:2px; }
+/* Text-style inputs (Input/Select from components/ui/field.jsx) already
+   show focus via their own bottom-border colour change (see controlClass's
+   focus:border-vermilion), on every page that uses them — not just the
+   Predict form. The generic focus-visible box ring above is meant for
+   buttons/links; on these underlined worksheet fields it reads as a
+   mismatched box outline layered on top of that border change. */
+:where(input,select,textarea,.fs-select__button):focus,
+:where(input,select,textarea,.fs-select__button):focus-visible { outline:none; }
 
 /* Existing Leaflet map remains a technical instrument, surrounded by the paper UI. */
 /* z-index:0 makes each map its own stacking context so Leaflet's panes/controls (z-index up to 1000) can never paint over the sticky navbar. */
@@ -234,7 +242,14 @@ path.route-course-line { animation:dash-flow 6s linear infinite; }
 /* Keep the blueprint panel itself clear; do not blur/soften its canvas layer. */
 .hull-lines-canvas + * { position: relative; }
 /* ── Live fleet map: nautical-chart treatment ─────────────────────────── */
-.fleet-map { position:relative; overflow:hidden; border:1px solid rgb(var(--c-rule) / .6); background:#d9e3e2; box-shadow:0 1px 0 rgb(255 255 255 / .55) inset; }
+/* isolation:isolate is what actually traps the legend/chip/corner-marker
+   z-indexes (1000-1100, needed to sit above Leaflet's own panes) inside
+   this element. `position:relative` alone does NOT create a new stacking
+   context, so without this those z-indexes escaped to the page's root
+   stacking context and could outrank the sticky navbar's z-50 once the
+   map scrolled near it — overflow:hidden only clips overflowing content,
+   it doesn't contain stacking. */
+.fleet-map { position:relative; isolation:isolate; overflow:hidden; border:1px solid rgb(var(--c-rule) / .6); background:#d9e3e2; box-shadow:0 1px 0 rgb(255 255 255 / .55) inset; }
 .fleet-map::before,.fleet-map::after { content:""; position:absolute; width:18px; height:18px; pointer-events:none; z-index:1100; }
 .fleet-map::before { left:-1px; top:-1px; border-left:1px solid rgb(var(--c-ink) / .8); border-top:1px solid rgb(var(--c-ink) / .8); }
 .fleet-map::after { right:-1px; bottom:-1px; border-right:1px solid rgb(var(--c-ink) / .8); border-bottom:1px solid rgb(var(--c-ink) / .8); }
