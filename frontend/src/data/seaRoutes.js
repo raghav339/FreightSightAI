@@ -202,9 +202,18 @@ export function smoothPath(points, samplesPerSegment = 14) {
 
     const alpha = 0.5;
     const t0 = 0;
-    const t1 = t0 + Math.pow(Math.hypot(p1.x - p0.x, p1.y - p0.y), alpha) || 0.0001;
-    const t2 = t1 + Math.pow(Math.hypot(p2.x - p1.x, p2.y - p1.y), alpha) || t1 + 0.0001;
-    const t3 = t2 + Math.pow(Math.hypot(p3.x - p2.x, p3.y - p2.y), alpha) || t2 + 0.0001;
+    // The `|| 0.0001` fallback must guard each segment's own distance term,
+    // not the running cumulative sum — guarding the sum only rescues a
+    // zero-distance segment when the cumulative total up to that point
+    // happens to be exactly 0 (true for the very first segment, since
+    // t0 = 0), but not for a zero-distance *last* segment, where p3 is
+    // deliberately clamped to equal p2 (see p3 above) and the cumulative
+    // total by then is already nonzero. That left t3 === t2 on every
+    // route's final segment, causing a 0/0 division below and a NaN
+    // coordinate reaching Leaflet.
+    const t1 = t0 + (Math.pow(Math.hypot(p1.x - p0.x, p1.y - p0.y), alpha) || 0.0001);
+    const t2 = t1 + (Math.pow(Math.hypot(p2.x - p1.x, p2.y - p1.y), alpha) || 0.0001);
+    const t3 = t2 + (Math.pow(Math.hypot(p3.x - p2.x, p3.y - p2.y), alpha) || 0.0001);
 
     for (let s = 0; s < samplesPerSegment; s++) {
       const t = t1 + (t2 - t1) * (s / samplesPerSegment);
